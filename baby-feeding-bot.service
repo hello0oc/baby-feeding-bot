@@ -1,0 +1,16 @@
+[Unit]
+Description=Baby Feeding Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/home/deploy/.openclaw/workspace/projects/baby-feeding
+Environment="BABY_FEEDING_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN"
+Environment="GEMINI_API_KEY=YOUR_GEMINI_API_KEY"
+ExecStart=/home/deploy/.openclaw/workspace/projects/baby-feeding/venv/bin/python3 baby_feeding_bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
