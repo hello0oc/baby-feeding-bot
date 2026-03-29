@@ -4,13 +4,16 @@ After=network.target
 
 [Service]
 Type=simple
-User=deploy
-WorkingDirectory=/home/deploy/.openclaw/workspace/projects/baby-feeding
-Environment="BABY_FEEDING_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN"
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/baby-feeding-bot
+Environment="BABY_FEEDING_BOT_TOKEN=YOUR_BOT_TOKEN"
 Environment="GEMINI_API_KEY=YOUR_GEMINI_API_KEY"
-ExecStart=/home/deploy/.openclaw/workspace/projects/baby-feeding/venv/bin/python3 baby_feeding_bot.py
+ExecStart=/home/ubuntu/baby-feeding-bot/venv/bin/python /home/ubuntu/baby-feeding-bot/baby_feeding_bot.py
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

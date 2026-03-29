@@ -1,38 +1,32 @@
-#!/bin/bash
-# Test script to verify bot setup
+#!/usr/bin/env bash
+set -e
 
-cd /home/deploy/.openclaw/workspace/projects/baby-feeding
-source venv/bin/activate
+echo "=== Baby Feeding Bot - Environment Verification ==="
 
-echo "Testing Baby Feeding Bot setup..."
-echo
+echo "Checking Python..."
+python3 --version
 
-# Test Python imports
-echo "Testing imports..."
-python3 -c "
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import httpx
-from dotenv import load_dotenv
-from PIL import Image
-print('✓ All Python imports successful')
-"
+echo "Checking pip dependencies..."
+pip install -q -r requirements.txt 2>/dev/null || true
 
-# Check environment
-echo
-echo "Environment check:"
+echo "Checking environment variables..."
 if [ -z "$BABY_FEEDING_BOT_TOKEN" ]; then
-    echo "⚠ BABY_FEEDING_BOT_TOKEN not set (will use default in run.sh)"
+    echo "WARNING: BABY_FEEDING_BOT_TOKEN not set"
 else
-    echo "✓ BABY_FEEDING_BOT_TOKEN is set"
+    echo "OK: BABY_FEEDING_BOT_TOKEN is set"
 fi
 
 if [ -z "$GEMINI_API_KEY" ]; then
-    echo "✗ GEMINI_API_KEY not set (required for image analysis)"
+    echo "WARNING: GEMINI_API_KEY not set"
 else
-    echo "✓ GEMINI_API_KEY is set"
+    echo "OK: GEMINI_API_KEY is set"
 fi
 
-echo
-echo "Setup test complete!"
-echo "Run './run.sh' to start the bot."
+echo ""
+echo "=== Running unit and integration tests ==="
+python3 -m pytest tests/ -v --tb=short 2>/dev/null || python3 -m unittest discover -s tests -v
+
+echo ""
+echo "=== Environment check complete ==="
+echo "To start the bot:"
+echo "  source venv/bin/activate && python3 baby_feeding_bot.py"
