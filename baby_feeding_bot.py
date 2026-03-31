@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.environ.get("BABY_FEEDING_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_PLACES_API_KEY")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite")
 DB_PATH = os.environ.get("BABY_FEEDING_DB_PATH", "baby_feeding.sqlite3")
 RETENTION_INSPIRATIONS_DAYS = int(os.environ.get("BABY_FEEDING_RETENTION_INSPIRATIONS_DAYS", "90"))
 RETENTION_FEEDBACK_DAYS = int(os.environ.get("BABY_FEEDING_RETENTION_FEEDBACK_DAYS", "90"))
@@ -558,29 +560,52 @@ def sha256_hex(data: bytes) -> str:
 URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 
 
-async def gemini_generate(parts: List[dict[str, Any]], *, temperature: float = 0.4, max_tokens: int = 2048) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    payload = {
-        "contents": [{"parts": parts}],
-        "generationConfig": {
-            "temperature": temperature,
-            "maxOutputTokens": max_tokens,
-            "thinkingConfig": {"thinkingBudget": 0},
-        },
-    }
-    async with httpx.AsyncClient() as http_client:
-        response = await http_client.post(url, json=payload, timeout=45.0)
-        if response.status_code != 200:
-            logger.error("Gemini API error: %s", response.status_code)
-            return "Sorry, I had trouble generating a response right now."
-        result = response.json()
-        candidates = result.get("candidates") or []
-        if not candidates:
-            return "Sorry, I couldn't generate a response."
-        content = (candidates[0].get("content") or {}).get("parts") or []
-        if not content:
-            return "Sorry, I couldn't generate a response."
-        return str(content[0].get("text") or "").strip() or "Sorry, I couldn't generate a response."
+async def gemini_generate(
+    parts: List[dict[str, Any]],
+    *,
+    temperature: float = 0.4,
+    max_tokens: int = 2048,
+    model: str = None,
+) -> str:
+    primary = model or GEMINI_MODEL
+    fallback = GEMINI_FALLBACK_MODEL
+    friendly_error = "Sorry, I had trouble generating a response right now."
+
+    for attempt_model in [primary, fallback]:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{attempt_model}:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [{"parts": parts}],
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens,
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        }
+        try:
+            async with httpx.AsyncClient() as http_client:
+                response = await http_client.post(url, json=payload, timeout=45.0)
+                if response.status_code != 200:
+                    logger.error("Gemini API error for %s: %s", attempt_model, response.status_code)
+                    continue
+                result = response.json()
+                candidates = result.get("candidates") or []
+                if not candidates:
+                    logger.error("Gemini API returned no candidates for %s", attempt_model)
+                    continue
+                content = (candidates[0].get("content") or {}).get("parts") or []
+                if not content:
+                    logger.error("Gemini API returned empty content for %s", attempt_model)
+                    continue
+                text = str(content[0].get("text") or "").strip()
+                if not text:
+                    logger.error("Gemini API returned blank text for %s", attempt_model)
+                    continue
+                return text
+        except Exception as e:
+            logger.error("Gemini API exception for %s: %s", attempt_model, e)
+            continue
+
+    return friendly_error
 
 
 def parse_int_or_default(text: str, default: int) -> int:
