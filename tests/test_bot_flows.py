@@ -208,16 +208,17 @@ class RenderingTests(unittest.TestCase):
         )
 
     def test_render_inspiration_message(self):
-        message = bot.render_inspiration_message(
+        text, keyboard = bot.render_inspiration_message(
             "- Pasta inspiration",
             [
                 "Option 1 title\nLine 2\nLine 3",
                 "Option 2 title\nLine 2",
             ],
         )
-        self.assertIn("Option 1", message)
-        self.assertIn("Option 2", message)
-        self.assertIn("Use 1 for Wednesday dinner", message)
+        self.assertIn("Option 1", text)
+        self.assertIn("Option 2", text)
+        self.assertIn("Use 1 for Wednesday dinner", text)
+        self.assertEqual(len(keyboard.inline_keyboard), 2)
 
 
 class DatabaseTests(unittest.TestCase):

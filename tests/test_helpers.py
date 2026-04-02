@@ -83,25 +83,29 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(normalized["days"]["wed"]["dinner"]["ingredients"], ["peas", "carrots"])
 
     def test_render_inspiration_message_is_actionable(self):
-        message = bot.render_inspiration_message(
+        text, keyboard = bot.render_inspiration_message(
             "- Pasta bake inspiration",
             [
                 "Creamy Veggie Pasta\nIngredients: pasta, broccoli\nQuick prep: steam and mix\nSafety note: chop finely",
                 "Chicken Rice Bowl\nIngredients: chicken, rice\nQuick prep: shred and stir\nSafety note: serve warm",
             ],
         )
-        self.assertIn("Use 1 for Wednesday dinner", message)
-        self.assertIn("Option 1", message)
-        self.assertIn("Option 2", message)
+        self.assertIn("Use 1 for Wednesday dinner", text)
+        self.assertIn("Option 1", text)
+        self.assertIn("Option 2", text)
+        # Verify keyboard has option picker
+        self.assertEqual(len(keyboard.inline_keyboard), 2)
+        self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, "opt:1")
+        self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, "opt:2")
 
     def test_render_inspiration_message_spanish(self):
-        message = bot.render_inspiration_message(
+        text, keyboard = bot.render_inspiration_message(
             "- Pasta bake inspiration",
             ["Creamy Veggie Pasta", "Chicken Rice Bowl"],
             language="es",
         )
-        self.assertIn("Opción 1", message)
-        self.assertIn("Esto es lo que encontré", message)
+        self.assertIn("Opción 1", text)
+        self.assertIn("Esto es lo que encontré", text)
 
     def test_render_meal_card_formatting(self):
         meal = {
