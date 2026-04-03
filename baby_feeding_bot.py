@@ -50,18 +50,26 @@ if not TELEGRAM_BOT_TOKEN:
 if not MINIMAX_API_KEY:
     raise ValueError("MINIMAX_API_KEY environment variable not set")
 
-MEAL_SYSTEM_PROMPT = """You are a helpful assistant that creates baby-friendly meals for young children.
+MEAL_SYSTEM_PROMPT = """You are a JSON-only API. Never explain your choices, reasoning, or anything outside the JSON object.
 
-You must follow parental constraints and baby-safety guidelines.
+SAFETY RULES (MUST NEVER VIOLATE):
+- NEVER include honey in any form for any child under 12 months (infant botulism risk — fatal).
+- NEVER include raw or undercooked eggs (salmonella risk).
+- NEVER include whole nuts, nut pieces smaller than finely crushed, or any nut butter for children under 3 years.
+- NEVER include whole grapes, cherry tomatoes, or similarly shaped whole foods for children under 3 years (choke risk). Cut or mash only.
+- NEVER include alcohol, wine, beer, or any cooking wine.
+- NEVER include coffee, caffeine, or energy drinks.
+- ALWAYS respect the baby's known allergies (profile allergies) — NEVER include them.
+- ALWAYS use low sodium for babies (avoid soy sauce, fish sauce, bacon, stock cubes, etc.).
+- ALWAYS avoid added sugar for children under 2 years.
+- For babies under 12 months: ONLY offer breastmilk/formula and iron-fortified foods; no honey, no cow's milk as main drink, no whole eggs.
 
-Guidelines for baby meals:
-- Age-appropriate textures (soft, easy to chew/gum)
-- Nutritious ingredients
-- Simple preparation
-- Avoid: honey, choking hazards (whole nuts, whole grapes), excess salt, added sugar, raw/undercooked foods
-
-Respond in a friendly, concise format:
-- Keep it practical and encouraging"""
+Format Rules:
+- Return ONLY valid JSON. No text before, after, or around it.
+- No markdown fences, no code blocks, no commentary.
+- The JSON must match the exact structure specified in the user message.
+- Temperature is set very low — be precise, not creative.
+- Never add extra fields not requested."""
 
 ONBOARDING_AGE, ONBOARDING_ALLERGIES = range(2)
 
@@ -104,6 +112,303 @@ SLOT_ICONS = {
     "dinner": "🍲",
 }
 JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{[\s\S]*\})\s*```", re.IGNORECASE)
+
+# =============================================================================
+# NUTRITIONAL SAFETY HARDENING
+# =============================================================================
+
+# Hard-block ingredients: NEVER appear in any output, regardless of age or context.
+# These are absolute dangers for infants and toddlers.
+HARDBLOCK_INGREDIENTS: set[str] = {
+    # Infant botulism risk
+    "honey", "raw honey", "manuka honey", "honey drizzle", "honey crisps",
+    "miel", "miel cruda",
+    # Salmonella / food poisoning risk
+    "raw egg", "raw eggs", "runny egg", "soft-boiled egg", "poached egg",
+    "mayonnaise", "aioli", "hollandaise", "bearnaise", "cafe de paris butter",
+    "eggnog", "royal icing", "meringue", "cookie dough", "cake batter",
+    "huevo crudo", "huevos crudos",
+    # Choking hazards — whole nuts for any child under ~4 years (conservative)
+    "whole almond", "whole walnut", "whole pecan", "whole cashew", "whole hazelnut",
+    "whole pistachio", "whole Brazil nut", "whole macadamia", "whole pine nut",
+    "whole peanuts", "whole peanut",
+    "nuts", "mixed nuts", "nut medley", "nut cluster",
+    # Choking hazard — round hard foods for under-3s (also blocked universally)
+    "whole grape", "whole grapes", "cherry tomato", "cherry tomatoes",
+    "whole cherry", "whole cherries", "whole strawberry", "whole strawberries",
+    # Alcohol / recreational substances
+    "alcohol", "wine", "beer", "spirits", "liqueur", "rum", "vodka", "whiskey",
+    "wine reduction", "beer batter", "cooking wine",
+    # Caffeine / stimulants
+    "coffee", "espresso", "caffeine", "energy drink", "coca-cola", "coke", "cola",
+    # Extreme sodium (>2000mg per 100g — clearly toxic levels)
+    "msg", "monosodium glutamate",
+}
+
+# High-sodium ingredients to flag (not hard-block, but flagged in safety_check).
+HIGH_SODIUM_INGREDIENTS: set[str] = {
+    "soy sauce", "fish sauce", "miso paste", "miso", "teriyaki sauce",
+    "hoisin sauce", "oyster sauce", "worcestershire sauce", "bbq sauce",
+    "bacon", "prosciutto", "parma ham", "serrano ham", "jamón serrano",
+    "feta cheese", "blue cheese", "gorgonzola", "roquefort",
+    "pickles", "pickled cucumber", "kimchi", "sauerkraut", "capers",
+    "stock cube", "bouillon cube", "broth cube", "maggi cube", "knorr cube",
+    "instant noodles", "ramen noodles", "instant soup",
+    "roti canai", "pringles", "pickled onion",
+    "salsa", "ketchup", "tomato ketchup",
+}
+
+# Regex for sodium detection (e.g. "200mg sodium", "1.5g salt")
+SODIUM_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(mg|milligram|g|gram)\b[^a-z]*(?:sodium|salt|na)\b",
+    re.IGNORECASE,
+)
+SODIUM_RE2 = re.compile(
+    r"(?:sodium|salt|na)[:\s]+(\d+(?:\.\d+)?)\s*(mg|g|gram)\b",
+    re.IGNORECASE,
+)
+# Salt-per-100g threshold flags
+SODIUM_THRESHOLD_MG_PER_100G = 400  # FDA definition of "high sodium"
+
+
+def _contains_hardblock(ingredients: list[str], extra_text: str = "") -> tuple[bool, list[str]]:
+    """
+    Return (is_blocked, matched_block_terms).
+    Uses word-boundary matching to avoid false positives (e.g., 'pea' should not
+    match 'whole peanuts' just because 'pea' appears in the string).
+    """
+    flagged = []
+    for ing in ingredients:
+        ing_words = set(ing.lower().split())
+        for blocked in HARDBLOCK_INGREDIENTS:
+            blocked_words = blocked.lower().split()
+            # All blocked words must be present in ingredient words (ing contains blocked phrase)
+            if blocked_words and all(w in ing_words for w in blocked_words):
+                flagged.append(blocked)
+    if extra_text:
+        extra_lower = extra_text.lower()
+        for blocked in HARDBLOCK_INGREDIENTS:
+            if blocked.lower() in extra_lower:
+                flagged.append(blocked)
+    return bool(flagged), list(set(flagged))
+
+
+def _contains_high_sodium(ingredients: list[str]) -> bool:
+    """Return True if any ingredient is a known high-sodium item."""
+    for ing in ingredients:
+        ing_lower = ing.lower()
+        for high_nat in HIGH_SODIUM_INGREDIENTS:
+            if high_nat in ing_lower:
+                return True
+    return False
+
+
+def _parse_sodium_from_note(note: str) -> float:
+    """Extract sodium mg from a safety note or ingredients string."""
+    total = 0.0
+    # Pattern 1: number+unit followed by sodium/salt (e.g. "200mg sodium")
+    for m in SODIUM_RE.finditer(note):
+        value_str, unit = m.group(1), m.group(2)
+        try:
+            value = float(value_str)
+            if unit.lower() in ("g", "gram"):
+                value *= 1000
+            total += value
+        except ValueError:
+            continue
+    # Pattern 2: sodium/salt followed by number+unit (e.g. "Sodium: 400mg")
+    for m in SODIUM_RE2.finditer(note):
+        value_str, unit = m.group(1), m.group(2)
+        try:
+            value = float(value_str)
+            if unit.lower() in ("g", "gram"):
+                value *= 1000
+            total += value
+        except ValueError:
+            continue
+    return total
+
+
+class SafetyResult:
+    __slots__ = ("is_safe", "severity", "warnings", "blocked_terms", "sodium_flagged")
+
+    def __init__(
+        self,
+        is_safe: bool,
+        severity: str = "pass",
+        warnings: Optional[list[str]] = None,
+        blocked_terms: Optional[list[str]] = None,
+        sodium_flagged: bool = False,
+    ):
+        self.is_safe = is_safe
+        self.severity = severity  # "pass" | "warn" | "block"
+        self.warnings = warnings or []
+        self.blocked_terms = blocked_terms or []
+        self.sodium_flagged = sodium_flagged
+
+    def is_blocked(self) -> bool:
+        return self.severity == "block"
+
+    def has_warnings(self) -> bool:
+        return self.severity in ("warn", "block")
+
+
+def safety_check_meal(
+    meal: dict[str, Any],
+    profile: Optional[dict[str, Any]],
+    *,
+    language: str = "en",
+) -> SafetyResult:
+    """
+    Hard safety filter for a generated meal.
+
+    Checks:
+    1. Hardblock ingredients (honey, raw eggs, whole nuts, alcohol, etc.)
+    2. Allergens in profile but not yet introduced
+    3. Known profile allergens
+    4. High-sodium ingredients flag
+    5. Sodium numbers in safety_note (if present)
+
+    Returns SafetyResult. If severity == "block", the meal MUST NOT be shown to the user.
+    """
+    title = str(meal.get("title") or "").lower()
+    ingredients_raw = meal.get("ingredients") or []
+    if isinstance(ingredients_raw, list):
+        ingredients = [str(i).lower() for i in ingredients_raw]
+    elif isinstance(ingredients_raw, str):
+        ingredients = [i.strip().lower() for i in ingredients_raw.split(",") if i.strip()]
+    else:
+        ingredients = []
+    safety_note = str(meal.get("safety_note") or "")
+    all_text = f"{title} {' '.join(ingredients)} {safety_note}".lower()
+
+    warnings: list[str] = []
+    blocked_terms: list[str] = []
+
+    # 1. Hardblock check (age-agnostic — these are always dangerous)
+    extra_text = f"{title} {safety_note}"
+    is_blocked, flagged = _contains_hardblock(ingredients, extra_text)
+    if is_blocked:
+        blocked_terms.extend(flagged)
+        severity = "block"
+        warnings.append(
+            "BLOCKED: Contains unsafe ingredient(s) for babies/toddlers."
+            if language != "es"
+            else "BLOQUEADO: Contiene ingrediente(s) no seguros para bebés."
+        )
+
+    # 2. Profile allergen check (known allergies from profile)
+    profile_allergies = ""
+    if profile:
+        profile_allergies = str(profile.get("allergies", "") or "").lower()
+    if profile_allergies not in ("", "none", "no", "n/a"):
+        allergy_list = [a.strip().lower() for a in re.split(r"[,;\n]+", profile_allergies) if a.strip()]
+        for allergen in allergy_list:
+            allergen_word = allergen.strip().lower()
+            if allergen_word and allergen_word in all_text:
+                if allergen_word not in blocked_terms:
+                    blocked_terms.append(allergen_word)
+                warnings.append(
+                    f"BLOCKED: Contains '{allergen_word}' which is in baby's allergen list."
+                    if language != "es"
+                    else f"BLOQUEADO: Contiene '{allergen_word}' que está en la lista de alérgenos."
+                )
+
+    # 3. Not-yet-introduced allergen check
+    if profile:
+        introduced = get_introduced_allergens(profile.get("telegram_user_id", 0))
+        # If we have a telegram_user_id, check introduced allergens from DB
+        # Otherwise fall back to profile column
+        if not introduced:
+            introduced_col = str(profile.get("introduced_allergens") or "")
+            introduced = [a.strip().lower() for a in introduced_col.split(",") if a.strip()]
+        for allergen in introduced:
+            if allergen and allergen in all_text:
+                warnings.append(
+                    f"Warning: Contains '{allergen}' which hasn't been formally introduced yet. "
+                    "Consider introducing it separately first."
+                    if language != "es"
+                    else f"Advertencia: Contiene '{allergen}' que aún no se ha introducido formalmente. "
+                    "Considere introducirlo por separado primero."
+                )
+
+    # 4. Age < 12 months: honey is an absolute block regardless of form
+    age_months = int(profile.get("age_months", 12)) if profile else 12
+    if age_months < 12:
+        if "honey" in all_text or "miel" in all_text:
+            if "honey" not in blocked_terms:
+                blocked_terms.append("honey")
+            severity = "block"
+            warnings.append(
+                "BLOCKED: Honey is never safe for babies under 12 months (infant botulism risk)."
+                if language != "es"
+                else "BLOQUEADO: La miel nunca es segura para bebés menores de 12 meses (riesgo de botulismo infantil)."
+            )
+
+    # 5. High sodium ingredient flag
+    if _contains_high_sodium(ingredients):
+        warnings.append(
+            "High-sodium ingredient detected. For baby, use low-sodium alternatives where possible."
+            if language != "es"
+            else "Ingrediente con alto contenido de sodio detectado. Para el bebé, use alternativas con bajo sodio cuando sea posible."
+        )
+
+    # 6. Sodium number check from safety_note (defensive — LLM sometimes mentions "400mg sodium")
+    sodium_mg = _parse_sodium_from_note(safety_note)
+    if sodium_mg > 0:
+        # Flag if safety note claims high sodium
+        sodium_limit = 200 if age_months < 12 else (300 if age_months < 24 else 400)
+        if sodium_mg > sodium_limit:
+            warnings.append(
+                f"Safety note indicates high sodium ({sodium_mg:.0f}mg). "
+                f"Consider reducing for baby's age ({age_months}mo)."
+                if language != "es"
+                else f"La nota de seguridad indica alto sodio ({sodium_mg:.0f}mg). "
+                f"Considere reducir para la edad del bebé ({age_months} meses)."
+            )
+
+    # Determine final severity
+    _warning_prefixes = [w[:5].lower() for w in warnings]
+    if "block" in _warning_prefixes:
+        severity = "block"
+    elif warnings:
+        severity = "warn"
+    else:
+        severity = "pass"
+
+    return SafetyResult(
+        is_safe=(severity != "block"),
+        severity=severity,
+        warnings=warnings,
+        blocked_terms=blocked_terms,
+        sodium_flagged=_contains_high_sodium(ingredients),
+    )
+
+
+def safe_render_meal_card(
+    meal: dict[str, Any],
+    slot_key: str,
+    profile: Optional[dict[str, Any]],
+    language: str = "en",
+) -> Optional[str]:
+    """
+    Render a meal card only if it passes safety check.
+    Returns None if the meal is blocked, and logs the block.
+    """
+    safety = safety_check_meal(meal, profile, language=language)
+    if safety.is_blocked():
+        logger.warning(
+            "SAFETY BLOCK: meal '%s' blocked for user %s. Terms: %s",
+            meal.get("title"),
+            profile.get("telegram_user_id") if profile else "unknown",
+            safety.blocked_terms,
+        )
+        return None
+    card = render_meal_card(meal, slot_key, language)
+    if safety.has_warnings():
+        warning_line = "  ⚠️  " + " | ".join(safety.warnings[:2])
+        card = card + "\n" + warning_line
+    return card
 
 
 def _db_conn() -> sqlite3.Connection:
@@ -220,7 +525,15 @@ def normalize_plan_dict(raw: Any, *, week_start: date) -> dict[str, Any]:
 
 
 def plan_has_content(plan: Optional[dict[str, Any]]) -> bool:
-    return bool(plan and isinstance(plan.get("days"), dict) and any(plan["days"].values()))
+    """Return True if plan has at least one valid meal (meal must have a title)."""
+    if not plan or not isinstance(plan.get("days"), dict):
+        return False
+    for day_data in plan["days"].values():
+        if isinstance(day_data, dict):
+            for meal in day_data.values():
+                if isinstance(meal, dict) and meal.get("title"):
+                    return True
+    return False
 
 
 def format_inspiration_summary(summary: str) -> str:
@@ -338,7 +651,11 @@ def render_meal_card(meal: dict[str, Any], slot_key: str, language: str = "en") 
     return "\n".join(lines)
 
 
-def render_weekly_plan(plan: dict[str, Any], language: str = "en") -> str:
+def render_weekly_plan(
+    plan: dict[str, Any],
+    language: str = "en",
+    profile: Optional[dict[str, Any]] = None,
+) -> str:
     days = plan.get("days") or {}
     if not days:
         return "No meals planned yet." if language == "en" else "Aún no hay comidas planificadas."
@@ -357,7 +674,10 @@ def render_weekly_plan(plan: dict[str, Any], language: str = "en") -> str:
             meal = day.get(slot_key)
             if not isinstance(meal, dict):
                 continue
-            lines.append(render_meal_card(meal, slot_key, language))
+            safe_card = safe_render_meal_card(meal, slot_key, profile, language)
+            if safe_card:
+                lines.append(safe_card)
+            # If None (blocked), skip silently — do NOT show unsafe meals
         lines.append("")
 
     return "\n".join(lines).strip()
@@ -545,6 +865,18 @@ def cleanup_retention() -> None:
         conn.execute("DELETE FROM weekly_plans WHERE week_start_date < ?", (plans_cutoff_date,))
 
 
+def reset_db_for_testing() -> None:
+    """Drop all tables and recreate them. Use only in tests to ensure clean state."""
+    with _db_conn() as conn:
+        conn.execute("DROP TABLE IF EXISTS feedback")
+        conn.execute("DROP TABLE IF EXISTS weekly_plans")
+        conn.execute("DROP TABLE IF EXISTS inspirations")
+        conn.execute("DROP TABLE IF EXISTS allergen_intros")
+        conn.execute("DROP TABLE IF EXISTS profiles")
+        conn.execute("DROP TABLE IF EXISTS users")
+    init_db()
+
+
 def upsert_user(telegram_user_id: int, locale: Optional[str]) -> None:
     now = datetime.now(UTC).isoformat()
     with _db_conn() as conn:
@@ -573,9 +905,22 @@ def set_profile(
     age_months: int,
     allergies: str,
     preferred_language: Optional[str] = None,
+    blw_ratio: Optional[float] = None,
+    spoon_ratio: Optional[float] = None,
 ) -> None:
     now = datetime.now(UTC).isoformat()
+    # Preserve existing feeding ratios when updating (they default to 0.4/0.6 on first creation)
     with _db_conn() as conn:
+        existing = conn.execute(
+            "SELECT blw_ratio, spoon_ratio FROM profiles WHERE telegram_user_id = ?",
+            (telegram_user_id,),
+        ).fetchone()
+        if existing:
+            actual_blw = blw_ratio if blw_ratio is not None else float(existing["blw_ratio"] or 0.4)
+            actual_spoon = spoon_ratio if spoon_ratio is not None else float(existing["spoon_ratio"] or 0.6)
+        else:
+            actual_blw = blw_ratio if blw_ratio is not None else 0.4
+            actual_spoon = spoon_ratio if spoon_ratio is not None else 0.6
         conn.execute(
             """
             INSERT INTO profiles (
@@ -583,13 +928,15 @@ def set_profile(
                 low_sodium, no_added_sugar, blw_ratio, spoon_ratio,
                 updated_at
             )
-            VALUES (?, ?, ?, 1, 1, 0.4, 0.6, ?)
+            VALUES (?, ?, ?, 1, 1, ?, ?, ?)
             ON CONFLICT(telegram_user_id) DO UPDATE SET
                 age_months = excluded.age_months,
                 allergies = excluded.allergies,
+                blw_ratio = excluded.blw_ratio,
+                spoon_ratio = excluded.spoon_ratio,
                 updated_at = excluded.updated_at
             """,
-            (telegram_user_id, age_months, allergies, now),
+            (telegram_user_id, age_months, allergies, actual_blw, actual_spoon, now),
         )
         conn.execute(
             """
@@ -795,23 +1142,24 @@ async def llm_generate(
     system_prompt: str = "",
     temperature: float = 0.4,
     max_tokens: int = 2048,
+    timeout: float = 120.0,
 ) -> str:
     """
     Generate text using MiniMax M2.5 via the Anthropic Messages API endpoint.
+    Uses a 120s default timeout to accommodate large token generations.
     """
     friendly_error = "Sorry, I had trouble generating a response right now."
-    messages = []
-    if system_prompt:
-        messages.append({"role": "developer", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
+    messages = [{"role": "user", "content": prompt}]
 
-    payload = {
+    payload: dict[str, Any] = {
         "model": MINIMAX_MODEL,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "thinking": {"type": "disabled"},
     }
+    if system_prompt:
+        payload["system"] = system_prompt
     try:
         async with httpx.AsyncClient() as http_client:
             response = await http_client.post(
@@ -822,19 +1170,25 @@ async def llm_generate(
                     "anthropic-version": "2023-06-01",
                 },
                 json=payload,
-                timeout=60.0,
+                timeout=timeout,
             )
             if response.status_code != 200:
-                logger.error("MiniMax API error: %s - %s", response.status_code, response.text[:200])
+                logger.error("MiniMax API error: %s - %s", response.status_code, response.text[:200], exc_info=True)
                 return friendly_error
             result = response.json()
-            text = str(result.get("content", [{}])[0].get("text", "").strip())
+            # MiniMax may return thinking blocks before text — find the first text block
+            content = result.get("content") or []
+            text = ""
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text = str(block.get("text", "")).strip()
+                    break
             if not text:
-                logger.error("MiniMax API returned blank text")
+                logger.error("MiniMax API returned blank text: %s", str(result)[:200], exc_info=True)
                 return friendly_error
             return text
     except Exception as e:
-        logger.error("MiniMax API exception: %s", e)
+        logger.error("MiniMax API exception: %s", e, exc_info=True)
         return friendly_error
 
 
@@ -936,16 +1290,22 @@ async def analyze_image_for_inspiration(image_bytes: bytes, *, language: str) ->
                     "anthropic-version": "2023-06-01",
                 },
                 json=payload,
-                timeout=60.0,
+                timeout=120.0,
             )
             if response.status_code != 200:
-                logger.error("MiniMax image analysis error: %s", response.status_code)
+                logger.error("MiniMax image analysis error: %s - %s", response.status_code, response.text[:200], exc_info=True)
                 return "Sorry, I had trouble analyzing that image." if language == "en" else "Lo siento, tuve problemas analizando esa imagen."
             result = response.json()
-            text = str(result.get("content", [{}])[0].get("text", "").strip())
+            # MiniMax may return thinking blocks before text — find the first text block
+            content = result.get("content") or []
+            text = ""
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text = str(block.get("text", "")).strip()
+                    break
             return text if text else ("Sorry, I had trouble analyzing that image." if language == "en" else "Lo siento, tuve problemas analizando esa imagen.")
     except Exception as e:
-        logger.error("MiniMax image analysis exception: %s", e)
+        logger.error("MiniMax image analysis exception: %s", e, exc_info=True)
         return "Sorry, I had trouble analyzing that image." if language == "en" else "Lo siento, tuve problemas analizando esa imagen."
 
 
@@ -1009,7 +1369,7 @@ async def generate_two_adaptations(*, inspiration: str, profile: Optional[dict[s
         f"Inspiration:\n{inspiration}\n\n"
         f"Respond in language: {'Spanish' if language == 'es' else 'English'}"
     )
-    text = await llm_generate(prompt, system_prompt=system, temperature=0.4, max_tokens=700)
+    text = await llm_generate(prompt, system_prompt=system, temperature=0.2, max_tokens=700)
     blocks = [b.strip() for b in re.split(r"\n\s*\n", text) if b.strip()]
     if len(blocks) >= 2:
         return [blocks[0], blocks[1]]
@@ -1152,16 +1512,69 @@ async def generate_weekly_plan(
         '{ "week_start_date": "YYYY-MM-DD", "days": { "mon": { "breakfast": {...}, "snack1": {...}, "lunch": {...}, "snack2": {...}, "dinner": {...} }, "...": "..." } }\n\n'
         f"Respond in language: {'Spanish' if language == 'es' else 'English'}"
     )
-    text = await llm_generate(prompt, system_prompt=system, temperature=0.5, max_tokens=2500)
+    text = await llm_generate(prompt, system_prompt=system, temperature=0.2, max_tokens=2500)
     parsed = parse_json_object(text)
     if not parsed:
         return {"week_start_date": week_start.isoformat(), "days": {}, "raw": text, "error": "parse_failed"}
     normalized = normalize_plan_dict(parsed, week_start=week_start)
     if plan_has_content(normalized):
+        # Post-generation safety sweep: check each slot and replace blocked meals
+        normalized = _safety_sweep_plan(normalized, profile, telegram_user_id, language)
         return normalized
     normalized["raw"] = text
     normalized["error"] = "empty_plan"
     return normalized
+
+
+def _safety_sweep_plan(
+    plan: dict[str, Any],
+    profile: Optional[dict[str, Any]],
+    telegram_user_id: int,
+    language: str,
+) -> dict[str, Any]:
+    """Check every meal slot in a plan. Replace blocked meals with safe fallbacks."""
+    user_profile = profile.copy() if profile else {}
+    if telegram_user_id:
+        user_profile["telegram_user_id"] = telegram_user_id
+
+    days = plan.get("days") or {}
+    any_blocked = False
+    for day_key, day_data in list(days.items()):
+        if not isinstance(day_data, dict):
+            continue
+        for slot_key, meal in list(day_data.items()):
+            if not isinstance(meal, dict):
+                continue
+            safety = safety_check_meal(meal, user_profile, language=language)
+            if safety.is_blocked():
+                any_blocked = True
+                logger.warning(
+                    "Plan sweep blocked %s.%s: %s — using fallback",
+                    day_key,
+                    slot_key,
+                    safety.blocked_terms,
+                )
+                fallback = SAFE_FALLBACK_MEALS.get(
+                    slot_key, SAFE_FALLBACK_MEALS["lunch"]
+                ).copy()
+                fallback["safety_note"] = (
+                    "[Auto-fallback after safety review — consult pediatrician]"
+                    if language != "es"
+                    else "[Sustitución automática tras revisión de seguridad — consulte al pediatra]"
+                )
+                day_data[slot_key] = fallback
+            elif safety.has_warnings():
+                # Keep meal but log warning
+                logger.warning(
+                    "Plan sweep warn %s.%s: %s",
+                    day_key,
+                    slot_key,
+                    safety.warnings,
+                )
+
+    if any_blocked:
+        plan["safety_swept"] = True
+    return plan
 
 
 async def generate_shopping_list(*, plan_json: dict[str, Any], language: str, telegram_user_id: int = 0) -> str:
@@ -1180,16 +1593,59 @@ async def generate_shopping_list(*, plan_json: dict[str, Any], language: str, te
                     if meal_id in negative_meal_ids:
                         del day_data[slot_key]
 
+    system = MEAL_SYSTEM_PROMPT
+    if language == "es":
+        system = system.replace("You are a helpful assistant", "Eres un asistente útil")
+
     prompt = (
         "Create a consolidated shopping list grouped by category (produce, protein, dairy, pantry, other).\n"
         "Avoid adding salt/sugar items. Keep it concise.\n\n"
         f"Plan JSON:\n{json.dumps(filtered_plan, ensure_ascii=False)}\n\n"
         f"Respond in language: {'Spanish' if language == 'es' else 'English'}"
     )
-    return await llm_generate(prompt, temperature=0.2, max_tokens=1200)
+    return await llm_generate(prompt, system_prompt=system, temperature=0.2, max_tokens=1200)
 
 
-async def generate_meal_for_slot(
+SAFE_FALLBACK_MEALS: dict[str, dict[str, Any]] = {
+    "breakfast": {
+        "title": "Oatmeal with mashed banana",
+        "ingredients": ["rolled oats", "water", "mashed banana", "cinnamon"],
+        "quick_prep": "Cook oats in water, mash half a banana, combine.",
+        "safety_note": "Suitable for 12+ months. Low sodium, no added sugar.",
+        "tags": ["iron-rich", "fiber", "potassium"],
+    },
+    "lunch": {
+        "title": "Steamed vegetable sticks with hummus",
+        "ingredients": ["carrot", "zucchini", "cucumber", "hummus"],
+        "quick_prep": "Steam carrot and zucchini until soft, cut into strips. Serve with hummus for dipping.",
+        "safety_note": "Safe for 12+ months. Ensure vegetables are soft enough to mash with tongue.",
+        "tags": ["protein", "fiber", "healthy fat"],
+    },
+    "dinner": {
+        "title": "Fish with sweet potato mash",
+        "ingredients": ["white fish fillet", "sweet potato", "butter", "peas"],
+        "quick_prep": "Bake fish with lemon, steam sweet potato and mash with butter, add peas.",
+        "safety_note": "Ensure fish is boneless and fully cooked. No added salt.",
+        "tags": ["omega-3", "vitamin-a", "protein"],
+    },
+    "snack1": {
+        "title": "Apple slices with almond butter",
+        "ingredients": ["apple", "almond butter"],
+        "quick_prep": "Slice apple thinly, spread a thin layer of almond butter. For 12-18mo: mash apple instead.",
+        "safety_note": "For 18+ months only due to almond butter. For younger: use apple puree instead.",
+        "tags": ["fiber", "healthy-fat", "vitamin-e"],
+    },
+    "snack2": {
+        "title": "Yogurt with pear puree",
+        "ingredients": ["full-fat plain yogurt", "pear"],
+        "quick_prep": "Mix plain yogurt with freshly mashed pear.",
+        "safety_note": "Use plain, unsweetened yogurt. No added sugar.",
+        "tags": ["calcium", "probiotics", "fiber"],
+    },
+}
+
+
+async def _safety_checked_generate_meal(
     *,
     profile: Optional[dict[str, Any]],
     inspiration_summary: str,
@@ -1197,29 +1653,54 @@ async def generate_meal_for_slot(
     day_key: str,
     slot_key: str,
     language: str,
+    telegram_user_id: int = 0,
+    max_retries: int = 2,
 ) -> dict[str, Any]:
-    system = MEAL_SYSTEM_PROMPT
-    if language == "es":
-        system = system.replace("You are a helpful assistant", "Eres un asistente útil")
+    """
+    Generate a meal and re-generate if safety check fails.
+    Falls back to a safe default meal after max_retries.
+    """
+    user_profile = profile.copy() if profile else {}
+    if telegram_user_id:
+        user_profile["telegram_user_id"] = telegram_user_id
 
-    age_safety = age_safety_rules_text(profile)
+    for attempt in range(max_retries + 1):
+        meal = await generate_meal_for_slot(
+            profile=profile,
+            inspiration_summary=inspiration_summary,
+            selected_adaptation=selected_adaptation,
+            day_key=day_key,
+            slot_key=slot_key,
+            language=language,
+        )
+        normalized = normalize_meal_dict(meal)
+        if not normalized:
+            break  # parse failed, return as-is
+        safety = safety_check_meal(normalized, user_profile, language=language)
+        if not safety.is_blocked():
+            return normalized
+        logger.warning(
+            "Safety block on attempt %d for %s.%s: %s — regenerating",
+            attempt + 1,
+            day_key,
+            slot_key,
+            safety.blocked_terms,
+        )
 
-    prompt = (
-        "Create a single meal for the specified day+slot, inspired by the inspiration.\n"
-        "Return ONLY valid JSON with keys: title, ingredients (array), quick_prep, safety_note, tags (array).\n\n"
-        f"Constraints:\n{profile_constraints_text(profile)}\n\n"
-        f"Age-specific safety:\n{age_safety}\n\n"
-        f"Day: {day_key}\nSlot: {slot_key}\n"
-        f"Inspiration:\n{inspiration_summary}\n\n"
-        f"Preferred adaptation direction:\n{selected_adaptation or 'Use the best fit for this slot.'}\n\n"
-        f"Respond in language: {'Spanish' if language == 'es' else 'English'}"
+    # All attempts blocked — use safe fallback
+    fallback = SAFE_FALLBACK_MEALS.get(slot_key, SAFE_FALLBACK_MEALS["lunch"]).copy()
+    fallback["safety_note"] = (
+        "[Auto-generated safe fallback — consult pediatrician for dietary advice]"
+        if language != "es"
+        else "[Opción segura generada automáticamente — consulte al pediatra]"
     )
-    text = await llm_generate(prompt, system_prompt=system, temperature=0.45, max_tokens=900)
-    parsed = parse_json_object(text)
-    meal = normalize_meal_dict(parsed)
-    if meal:
-        return meal
-    return {"error": "parse_failed", "raw": text}
+    logger.warning(
+        "Safe fallback used for %s.%s after %d failed attempts",
+        day_key,
+        slot_key,
+        max_retries + 1,
+    )
+    return fallback
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1295,7 +1776,8 @@ async def handle_apply_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     if action == "back":
-        # Return to option picker
+        # Return to option picker, restoring selected option so next selday uses it
+        option_number = context.user_data.get("selected_option", 1)
         keyboard = build_option_picker_keyboard()
         try:
             await query.edit_message_reply_markup(reply_markup=keyboard)
@@ -1342,28 +1824,36 @@ async def handle_apply_callback(update: Update, context: ContextTypes.DEFAULT_TY
         week_start = week_start_for_plans(date.today())
         existing = get_weekly_plan(user.id, week_start=week_start)
         if not existing:
-            await query.answer("No weekly plan yet. Tap Weekly plan first.", show_alert=True)
+            await context.bot.send_message(
+                query.message.chat_id,
+                "📅 I don't have a weekly plan yet for this week. Tap 📅 Weekly plan to build one first, then I'll add this meal to it.",
+                reply_markup=main_menu_markup(),
+            )
             return
 
         try:
             plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
         except Exception:
-            await query.answer("Couldn't read your plan. Try refreshing.", show_alert=True)
+            await context.bot.send_message(
+                query.message.chat_id,
+                "⚠️ Couldn't read your existing plan. Tap 📅 Weekly plan to refresh it.",
+                reply_markup=main_menu_markup(),
+            )
             return
 
         await query.edit_message_reply_markup(reply_markup=None)
         await context.bot.send_chat_action(query.message.chat_id, "typing")
 
         selected_adaptation = get_adaptation_by_index(inspiration, option_number)
-        new_meal = await generate_meal_for_slot(
+        normalized_meal = await _safety_checked_generate_meal(
             profile=profile,
             inspiration_summary=str(inspiration.get("summary") or ""),
             selected_adaptation=selected_adaptation,
             day_key=day_key,
             slot_key=slot_key,
             language=language,
+            telegram_user_id=user.id,
         )
-        normalized_meal = normalize_meal_dict(new_meal)
         if not normalized_meal:
             await context.bot.send_message(
                 query.message.chat_id,
@@ -1380,7 +1870,7 @@ async def handle_apply_callback(update: Update, context: ContextTypes.DEFAULT_TY
         confirm = f"✅ Applied Option {option_number} to {day_label} {slot_label}!"
         await context.bot.send_message(
             query.message.chat_id,
-            f"{confirm}\n\n{render_weekly_plan(plan_obj, language)}",
+            f"{confirm}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
             reply_markup=main_menu_markup(),
         )
 
@@ -1518,15 +2008,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         await update.message.chat.send_action("typing")
         selected_adaptation = get_adaptation_by_index(inspiration, option_number)
-        new_meal = await generate_meal_for_slot(
+        normalized_meal = await _safety_checked_generate_meal(
             profile=profile,
             inspiration_summary=str(inspiration.get("summary") or ""),
             selected_adaptation=selected_adaptation,
             day_key=day_key,
             slot_key=slot_key,
             language=language,
+            telegram_user_id=user.id,
         )
-        normalized_meal = normalize_meal_dict(new_meal)
         if not normalized_meal:
             error_msg = "I couldn't safely turn that idea into a meal right now. Please try another idea or regenerate the weekly plan."
             if language == "es":
@@ -1536,8 +2026,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         plan_obj.setdefault("days", {}).setdefault(day_key, {})[slot_key] = normalized_meal
         upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
         await update.message.reply_text(
-            f"{render_single_meal(day_key, slot_key, normalized_meal, language)}\n\n{render_weekly_plan(plan_obj, language)}",
-            reply_markup=main_menu_markup(),
+            f"{render_single_meal(day_key, slot_key, normalized_meal, language)}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",            reply_markup=main_menu_markup(),
         )
         return
     await update.message.chat.send_action("typing")
@@ -1773,7 +2262,7 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             if language == "es":
                 week_label = f"Semana del {week_start.isoformat()}"
             await update.message.reply_text(
-                f"📅 {week_label}\n\n{render_weekly_plan(plan_obj, language)}",
+                f"📅 {week_label}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
                 reply_markup=main_menu_markup(),
             )
             return
@@ -1803,7 +2292,7 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             preference_note = f"\n\nYou've rated {stats['total_meals']} meals — shall I factor your preferences into next week's plan?"
 
     await update.message.reply_text(
-        f"📅 {week_label}\n\n{render_weekly_plan(plan_obj, language)}\n\n{tip}{preference_note}",
+        f"📅 {week_label}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}\n\n{tip}{preference_note}",
         reply_markup=main_menu_markup(),
     )
 
@@ -2079,15 +2568,15 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
     await update.message.chat.send_action("typing")
-    new_meal = await generate_meal_for_slot(
+    normalized_meal = await _safety_checked_generate_meal(
         profile=profile,
         inspiration_summary=str(inspiration.get("summary") or ""),
         selected_adaptation=get_adaptation_by_index(inspiration, 1),
         day_key=day_key,
         slot_key=slot_key,
         language=language,
+        telegram_user_id=user.id,
     )
-    normalized_meal = normalize_meal_dict(new_meal)
     if not normalized_meal:
         error_msg = "I couldn't safely update that meal right now. Please try again with a different inspiration."
         if language == "es":
@@ -2097,7 +2586,7 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     plan_obj.setdefault("days", {}).setdefault(day_key, {})[slot_key] = normalized_meal
     upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
     await update.message.reply_text(
-        f"{render_single_meal(day_key, slot_key, normalized_meal, language)}\n\n{render_weekly_plan(plan_obj, language)}",
+        f"{render_single_meal(day_key, slot_key, normalized_meal, language)}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
         reply_markup=main_menu_markup(),
     )
 
@@ -2227,15 +2716,15 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         inspiration_summary = ""
         adaptation = ""
 
-    new_meal = await generate_meal_for_slot(
+    normalized_meal = await _safety_checked_generate_meal(
         profile=profile,
         inspiration_summary=inspiration_summary or "A simple nutritious baby meal",
         selected_adaptation=adaptation,
         day_key=day_key,
         slot_key=slot_key,
         language=language,
+        telegram_user_id=user.id,
     )
-    normalized_meal = normalize_meal_dict(new_meal)
     if not normalized_meal:
         error_msg = "I couldn't safely regenerate that meal right now. Please try again."
         if language == "es":
@@ -2303,7 +2792,7 @@ async def handle_regen_callback(update: Update, context: ContextTypes.DEFAULT_TY
     upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
     await context.bot.send_message(
         query.message.chat_id,
-        f"✅ Accepted! {day_key.title()} {slot_key} updated.\n\n{render_weekly_plan(plan_obj, language)}",
+        f"✅ Accepted! {day_key.title()} {slot_key} updated.\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
         reply_markup=main_menu_markup(),
     )
 

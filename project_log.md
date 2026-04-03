@@ -1,5 +1,75 @@
 # Baby Feeding Bot — Dev Log
 
+## 2026-04-02 — Deep Code Review + V&V + Bug Fixes
+
+### Bugs Found & Fixed
+
+#### P0: `generate_shopping_list` NameError (CRASH)
+- **Bug:** Used undefined `system` variable → `NameError: name 'system' is not defined`
+- **Fix:** Added `system = MEAL_SYSTEM_PROMPT` with Spanish language detection
+
+#### P0: `analyze_image_for_inspiration` timeout too short
+- **Bug:** Hardcoded `timeout=60.0` — image processing can take longer
+- **Fix:** Changed to `timeout=120.0` (matching main LLM calls)
+
+#### P0: `set_profile` always resets feeding ratios to defaults
+- **Bug:** `ON CONFLICT DO UPDATE` omitted `blw_ratio` and `spoon_ratio` columns, so updating age/allergies always reset ratios to 0.4/0.6
+- **Fix:** Added `blw_ratio`/`spoon_ratio` to INSERT and UPDATE SET clause; added SELECT to preserve existing values when not explicitly provided
+
+#### P1: `back:X` callback loses selected option number
+- **Bug:** `back:X` returned to option picker but didn't restore `selected_option` in `context.user_data`, causing subsequent navigation to use wrong option
+- **Fix:** Added `option_number = context.user_data.get("selected_option", 1)` before showing option picker
+
+#### P1: `plan_has_content` checked dict truthiness, not meal validity
+- **Bug:** `any(plan["days"].values())` returned True for day-slots dicts containing only invalid meals (no title) — empty slot dicts are truthy in Python
+- **Fix:** Rewrote to explicitly check `meal.get("title")` — only valid meals count as content
+
+#### P2: `.env.example` listed wrong API key variable
+- **Bug:** Listed `GEMINI_API_KEY` instead of `MINIMAX_API_KEY`
+- **Fix:** Updated to `MINIMAX_API_KEY`
+
+#### P2: Test files used wrong env var name
+- **Bug:** `test_bot_flows.py` and `test_helpers.py` used `GEMINI_API_KEY` instead of `MINIMAX_API_KEY`
+- **Fix:** Updated both to `MINIMAX_API_KEY`
+
+### New Test Files Added
+- `tests/test_llm_contract.py` — 18 tests: MiniMax API contract (thinking blocks, temperature, error codes, system prompt, image analysis)
+- `tests/test_keyboard_flow.py` — 22 tests: Inline keyboard state machine (opt→selday→apply→back, state preservation)
+- `tests/test_database.py` — 22 tests: DB edge cases (upsert, ratio preservation, plan normalization, allergen intros, week start)
+- `tests/test_prompt_injection.py` — 19 tests: Prompt injection defenses (JSON injection, system prompt leakage, greeting filter)
+- `tests/test_error_handling.py` — 25 tests: Error resilience (all HTTP codes, SQLite errors, image corruption)
+
+### New Files
+- `VANDV_STRATEGY.md` — Comprehensive V&V strategy (testing pyramid, LLM contract, keyboard flow, CI/CD, coverage targets)
+- `scripts/restart_bot.sh` — Safe bot restart script (graceful stop, nohup start, PID file, health check)
+
+### Bug: `normalize_plan_dict` Was NOT Mutating Input
+- Initial investigation suggested `normalize_plan_dict` mutated its input — FALSE ALARM. It creates a new `normalized_days` dict. The real bug was in `plan_has_content` (above).
+
+### Test Results
+- Before: 62 passed, 1 skipped (test_bot_flows.py broken)
+- After: 222 passed, 1 skipped (all passing)
+
+### Code Review Findings (No Fix Needed)
+- MiniMax thinking blocks: `extract_json_text` correctly handles `type: "text"` blocks (thinking blocks are `type: "thinking"` and skipped)
+- Temperature settings: adaptation = 0.2, weekly plan = 0.2, meal slot = 0.45 ✓
+- Inline keyboard Option 2: Both buttons have `opt:2` callback data ✓
+- "No weekly plan" error: Shows visible text message, not just toast ✓
+- `profile_constraints_text`: Uses `profile.get("age_months", 12)` ✓
+- BLW/spoon ratio: Injected into prompts via `profile_constraints_text()` ✓
+- SQLite: All queries use parameterized `?` placeholders — safe from injection ✓
+
+### CI/CD Recommendations (in VANDV_STRATEGY.md)
+- Ruff linting with pre-commit hook
+- GitHub Actions: lint → test → integration-test → coverage gate
+- Minimum 80% line coverage
+- E2E smoke tests on merge to main
+- Test bot polling for local callback testing
+
+---
+
+## 2026-04-02 — MiniMax Switch + P0-P2 Features
+
 ## 2026-04-02 — MiniMax Switch + P0-P2 Features
 
 ### SWITCH LLM: Gemini → MiniMax ✅

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 
 os.environ.setdefault("BABY_FEEDING_BOT_TOKEN", "test-token")
-os.environ.setdefault("GEMINI_API_KEY", "test-key")
+os.environ.setdefault("MINIMAX_API_KEY", "test-key")
 os.environ.setdefault(
     "BABY_FEEDING_DB_PATH",
     os.path.join(tempfile.gettempdir(), "baby_feeding_test_helpers.sqlite3"),
