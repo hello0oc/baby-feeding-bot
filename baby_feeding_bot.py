@@ -36,6 +36,123 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+# =============================================================================
+# NUTRITION REFERENCE DATA LOADING
+# =============================================================================
+
+# Base directory for relative paths
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_nutrition_reference() -> dict[str, Any]:
+    """Load the baby nutrition reference JSON at startup."""
+    ref_path = os.path.join(_BASE_DIR, "data", "baby_nutrition_reference.json")
+    try:
+        with open(ref_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logger.warning("Nutrition reference file not found at %s", ref_path)
+        return {"foods": [], "categories": [], "allergen_risk_levels": []}
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse nutrition reference: %s", e)
+        return {"foods": [], "categories": [], "allergen_risk_levels": []}
+
+
+def _load_nutrition_context_text() -> str:
+    """Load the condensed nutrition context for LLM prompts."""
+    context_path = os.path.join(_BASE_DIR, "prompts", "nutrition_context.txt")
+    try:
+        with open(context_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        logger.warning("Nutrition context file not found at %s", context_path)
+        return ""
+
+
+# Global nutrition reference data (loaded once at startup)
+NUTRITION_REFERENCE = _load_nutrition_reference()
+NUTRITION_CONTEXT_TEXT = _load_nutrition_context_text()
+
+
+def get_nutritional_context(foods_list: list[str]) -> str:
+    """
+    Return formatted nutritional information for a list of food names.
+    
+    Args:
+        foods_list: List of food names (English) to look up
+        
+    Returns:
+        Formatted string with nutritional data for matched foods
+    """
+    if not NUTRITION_REFERENCE.get("foods"):
+        return ""
+    
+    matched_foods = []
+    foods_lower = [f.lower().strip() for f in foods_list]
+    
+    for food in NUTRITION_REFERENCE["foods"]:
+        food_name = food.get("name", {}).get("en", "").lower()
+        # Match if any input food is substring of reference food or vice versa
+        for query in foods_lower:
+            if query in food_name or food_name in query:
+                matched_foods.append(food)
+                break
+    
+    if not matched_foods:
+        return ""
+    
+    lines = ["📊 Nutritional Reference (per 100g):"]
+    for food in matched_foods[:5]:  # Limit to 5 matches to avoid token bloat
+        name = food["name"]["en"]
+        nutrients = food.get("nutrients_per_100g", {})
+        category = food.get("category", "unknown")
+        allergen = food.get("allergen_risk", "none")
+        from_months = food.get("appropriate_from_months", 6)
+        
+        line = f"• {name} ({category}): Fe+{nutrients.get('iron_mg', 0)}mg Ca+{nutrients.get('calcium_mg', 0)}mg C+{nutrients.get('vitamin_c_mg', 0)}mg"
+        if allergen != "none":
+            line += f", {allergen} allergen risk"
+        if from_months > 6:
+            line += f", from {from_months}mo"
+        lines.append(line)
+    
+    return "\n".join(lines)
+
+
+def get_nutrition_context_for_age(age_months: int) -> str:
+    """
+    Get relevant nutrition context filtered for baby's age.
+    
+    Args:
+        age_months: Baby's age in months
+        
+    Returns:
+        Condensed nutrition guidance appropriate for age
+    """
+    if not NUTRITION_CONTEXT_TEXT:
+        return ""
+    
+    # Filter foods by age appropriateness
+    age_appropriate = []
+    if NUTRITION_REFERENCE.get("foods"):
+        for food in NUTRITION_REFERENCE["foods"]:
+            if food.get("appropriate_from_months", 6) <= age_months:
+                age_appropriate.append(food.get("name", {}).get("en", ""))
+    
+    context = NUTRITION_CONTEXT_TEXT
+    
+    # Add age-specific guidance
+    if age_months < 6:
+        age_note = "Focus: Iron-fortified cereals only. Single ingredients. Smooth purees."
+    elif age_months < 9:
+        age_note = "Focus: Iron-rich foods critical. Introduce allergens one at a time. Mash textures."
+    elif age_months < 12:
+        age_note = "Focus: Finger foods, soft pieces. Continue iron + vitamin C pairing."
+    else:
+        age_note = "Focus: Family foods adapted. Continue balanced nutrition."
+    
+    return f"{age_note}\n\n{context}"
 TELEGRAM_BOT_TOKEN = os.environ.get("BABY_FEEDING_BOT_TOKEN")
 MINIMAX_API_KEY = os.environ.get("MINIMAX_API_KEY")
 MINIMAX_MODEL = "MiniMax-M2.5"
@@ -1351,6 +1468,65 @@ def age_safety_rules_text(profile: Optional[dict[str, Any]]) -> str:
     return f"Current feeding stage ({stage})\n{warning}"
 
 
+async def generate_meal_for_slot(
+    *,
+    profile: Optional[dict[str, Any]],
+    inspiration_summary: str,
+    selected_adaptation: str,
+    day_key: str,
+    slot_key: str,
+    language: str,
+) -> dict[str, Any]:
+    """
+    Generate a single meal for a specific day/slot.
+    
+    Uses nutrition reference data to guide meal generation with accurate
+    nutritional information rather than LLM hallucination.
+    """
+    system = MEAL_SYSTEM_PROMPT
+    if language == "es":
+        system = system.replace("You are a helpful assistant", "Eres un asistente útil")
+
+    age_safety = age_safety_rules_text(profile)
+    age_months = int(profile.get("age_months", 12)) if profile else 12
+    
+    # Load nutrition context for this age group
+    nutrition_context = get_nutrition_context_for_age(age_months)
+
+    prompt = (
+        f"Create a single baby-safe meal for {day_key} {slot_key}.\n"
+        f"Baby age: {age_months} months\n\n"
+        "Return a JSON object with:\n"
+        "- title (string)\n"
+        "- ingredients (array of strings)\n"
+        "- quick_prep (string)\n"
+        "- safety_note (string)\n"
+        "- tags (array of strings; e.g., iron-rich, calcium, protein, fiber)\n\n"
+        f"Constraints:\n{profile_constraints_text(profile)}\n\n"
+        f"Age-specific safety:\n{age_safety}\n\n"
+        f"Nutritional guidance (USE THESE FOODS AND VALUES):\n{nutrition_context}\n\n"
+        f"Inspiration context:\n{inspiration_summary}\n\n"
+        f"Selected adaptation direction:\n{selected_adaptation}\n\n"
+        "Create a meal based on the inspiration but adapted for baby's age with safe preparation.\n"
+        "Return ONLY valid JSON. No commentary."
+    )
+    
+    text = await llm_generate(prompt, system_prompt=system, temperature=0.2, max_tokens=800)
+    parsed = parse_json_object(text)
+    
+    if parsed and isinstance(parsed, dict):
+        return parsed
+    
+    # Fallback if parsing fails
+    return {
+        "title": "Simple vegetable puree",
+        "ingredients": ["carrot", "sweet potato"],
+        "quick_prep": "Steam and mash vegetables",
+        "safety_note": f"Suitable for {age_months} months. Ensure soft texture.",
+        "tags": ["vegetable", "fiber"],
+    }
+
+
 async def generate_two_adaptations(*, inspiration: str, profile: Optional[dict[str, Any]], language: str) -> List[str]:
     system = MEAL_SYSTEM_PROMPT
     if language == "es":
@@ -1492,6 +1668,9 @@ async def generate_weekly_plan(
                 if insights:
                     feedback_insight = "\n".join(insights)
 
+    # Load nutrition context for this age group
+    nutrition_context = get_nutrition_context_for_age(age_months)
+
     prompt = (
         f"Create a weekly meal plan for a {age_months}-month-old.\n"
         "Structure requirements:\n"
@@ -1505,6 +1684,7 @@ async def generate_weekly_plan(
         "- tags (array of strings; e.g., iron-rich, calcium, protein, fiber)\n\n"
         f"Constraints:\n{profile_constraints_text(profile)}\n\n"
         f"Age-specific safety:\n{age_safety}\n\n"
+        f"Nutritional guidance (USE THESE FOODS AND VALUES):\n{nutrition_context}\n\n"
         f"Week starts: {week_start.isoformat()}\n"
         f"Inspirations (themes):\n{inspiration_text}\n\n"
         f"{'Based on past feedback, user prefers: ' + feedback_insight + '\n\n' if feedback_insight else ''}"

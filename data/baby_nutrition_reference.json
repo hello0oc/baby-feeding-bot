@@ -1,0 +1,462 @@
+{
+  "metadata": {
+    "source": "WHO Guiding Principles for Complementary Feeding (2003, updated), EFSA NDA Panel 2023, Solid Starts First Foods reference",
+    "last_updated": "2026-04-03",
+    "version": "1.0",
+    "note": "Nutrient values are per 100g edible portion, cooked/ready-to-eat where applicable. Values approximate from food composition databases."
+  },
+  "categories": ["protein", "fruit", "vegetable", "grain", "dairy"],
+  "allergen_risk_levels": ["none", "low", "medium", "high"],
+  "foods": [
+    {
+      "name": {"en": "Chicken breast", "de": "Hähnchenbrust"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 0.7, "calcium_mg": 11, "vitamin_c_mg": 0, "protein_g": 31, "fiber_g": 0},
+      "allergen_risk": "none",
+      "safe_preparation": ["poach until fully cooked (75°C internal)", "shred finely for younger babies", "offer as soft strips for BLW"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent protein source. Ensure fully cooked. Remove skin for younger babies."
+    },
+    {
+      "name": {"en": "Beef mince (lean)", "de": "Rinderhackfleisch (mager)"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 2.6, "calcium_mg": 10, "vitamin_c_mg": 0, "protein_g": 26, "fiber_g": 0},
+      "allergen_risk": "none",
+      "safe_preparation": ["brown thoroughly until no pink remains", "mix with breast milk or sauce for texture", "serve as soft meatballs"],
+      "appropriate_from_months": 6,
+      "notes": "Top iron source for babies. Critical for preventing iron deficiency after 6 months."
+    },
+    {
+      "name": {"en": "Salmon fillet", "de": "Lachsfilet"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 0.3, "calcium_mg": 12, "vitamin_c_mg": 0, "protein_g": 25, "fiber_g": 0},
+      "allergen_risk": "high",
+      "safe_preparation": ["bake or steam until flaky", "check carefully for bones", "flake into small pieces"],
+      "appropriate_from_months": 6,
+      "notes": "High allergen—introduce early in small amounts. Excellent omega-3 source. Limit to 2 servings/week due to mercury."
+    },
+    {
+      "name": {"en": "Cod fillet", "de": "Kabeljaufilet"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 0.2, "calcium_mg": 16, "vitamin_c_mg": 0, "protein_g": 18, "fiber_g": 0},
+      "allergen_risk": "high",
+      "safe_preparation": ["steam until opaque and flaky", "check thoroughly for bones", "mash with fork"],
+      "appropriate_from_months": 6,
+      "notes": "Low mercury white fish. High allergen—introduce early in small amounts."
+    },
+    {
+      "name": {"en": "Lentils (red, cooked)", "de": "Rote Linsen (gekocht)"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 3.3, "calcium_mg": 19, "vitamin_c_mg": 1.5, "protein_g": 9, "fiber_g": 7.9},
+      "allergen_risk": "low",
+      "safe_preparation": ["cook until completely soft and mushy", "rinse canned lentils to reduce sodium", "blend into smooth puree for younger babies"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent plant-based iron source. Pair with vitamin C foods to boost iron absorption."
+    },
+    {
+      "name": {"en": "Chickpeas (cooked)", "de": "Kichererbsen (gekocht)"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 2.9, "calcium_mg": 49, "vitamin_c_mg": 1.3, "protein_g": 8.9, "fiber_g": 7.6},
+      "allergen_risk": "low",
+      "safe_preparation": ["cook until very soft", "mash or blend for hummus", "remove skins for younger babies"],
+      "appropriate_from_months": 6,
+      "notes": "Good iron and zinc source. Hummus is an excellent first food. Remove skins to reduce gas."
+    },
+    {
+      "name": {"en": "Tofu (firm, calcium-set)", "de": "Tofu (fest, calcium-gesetzt)"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 5.4, "calcium_mg": 372, "vitamin_c_mg": 0, "protein_g": 15, "fiber_g": 0.3},
+      "allergen_risk": "medium",
+      "safe_preparation": ["press to remove excess water", "cut into finger-sized strips", "lightly pan-fry or steam"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent calcium source for dairy-free babies. Use calcium-set varieties."
+    },
+    {
+      "name": {"en": "Egg (whole, cooked)", "de": "Ei (ganz, gekocht)"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 1.8, "calcium_mg": 50, "vitamin_c_mg": 0, "protein_g": 13, "fiber_g": 0},
+      "allergen_risk": "high",
+      "safe_preparation": ["hard-boil until yolk is fully set", "scramble until fully cooked", "never serve raw or runny"],
+      "appropriate_from_months": 6,
+      "notes": "High allergen—introduce early. Ensure fully cooked (no runny yolk). Excellent iron and choline source."
+    },
+    {
+      "name": {"en": "Turkey mince", "de": "Putenhackfleisch"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 1.1, "calcium_mg": 11, "vitamin_c_mg": 0, "protein_g": 27, "fiber_g": 0},
+      "allergen_risk": "none",
+      "safe_preparation": ["cook thoroughly until no pink remains", "mix with vegetables", "form into soft meatballs"],
+      "appropriate_from_months": 6,
+      "notes": "Lean protein source. Lower iron than beef but well-absorbed heme iron."
+    },
+    {
+      "name": {"en": "White beans (cooked)", "de": "Weiße Bohnen (gekocht)"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 3.7, "calcium_mg": 69, "vitamin_c_mg": 0, "protein_g": 9, "fiber_g": 7.4},
+      "allergen_risk": "low",
+      "safe_preparation": ["cook until very soft", "mash thoroughly", "remove skins for younger babies"],
+      "appropriate_from_months": 6,
+      "notes": "High fiber—may cause gas. Good iron and calcium source."
+    },
+    {
+      "name": {"en": "Avocado", "de": "Avocado"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.6, "calcium_mg": 12, "vitamin_c_mg": 10, "protein_g": 2, "fiber_g": 6.7},
+      "allergen_risk": "low",
+      "safe_preparation": ["scoop flesh away from skin", "mash ripe flesh with fork", "offer as soft spears"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent first food. High healthy fats for brain development. Ripe avocados should yield to gentle pressure."
+    },
+    {
+      "name": {"en": "Banana (ripe)", "de": "Banane (reif)"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.3, "calcium_mg": 5, "vitamin_c_mg": 8.7, "protein_g": 1.1, "fiber_g": 2.6},
+      "allergen_risk": "none",
+      "safe_preparation": ["mash ripe banana with fork", "serve as finger food in spears", "mix with cereals"],
+      "appropriate_from_months": 6,
+      "notes": "Classic first food. Ripe bananas (with brown spots) are easier to digest. Can cause constipation."
+    },
+    {
+      "name": {"en": "Apple (cooked)", "de": "Apfel (gekocht)"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.1, "calcium_mg": 5, "vitamin_c_mg": 2, "protein_g": 0.2, "fiber_g": 1.3},
+      "allergen_risk": "low",
+      "safe_preparation": ["steam or bake until soft", "mash or puree", "for older babies: grate raw finely"],
+      "appropriate_from_months": 6,
+      "notes": "Cooking softens fiber and makes easier to digest. Raw apple can be choking hazard under 12 months."
+    },
+    {
+      "name": {"en": "Pear (ripe, soft)", "de": "Birne (reif, weich)"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.2, "calcium_mg": 9, "vitamin_c_mg": 4.3, "protein_g": 0.4, "fiber_g": 3.1},
+      "allergen_risk": "none",
+      "safe_preparation": ["steam if firm", "mash ripe flesh", "offer soft ripe slices"],
+      "appropriate_from_months": 6,
+      "notes": "Gentle on digestion. Good for relieving constipation. Choose very ripe, soft pears."
+    },
+    {
+      "name": {"en": "Blueberries", "de": "Blaubeeren"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.3, "calcium_mg": 6, "vitamin_c_mg": 9.7, "protein_g": 0.7, "fiber_g": 2.4},
+      "allergen_risk": "none",
+      "safe_preparation": ["mash fresh or frozen berries", "cut large berries in half", "serve flattened"],
+      "appropriate_from_months": 6,
+      "notes": "High antioxidant content. Can stain! Mash to reduce choking risk. Frozen are nutritious and budget-friendly."
+    },
+    {
+      "name": {"en": "Strawberries", "de": "Erdbeeren"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.4, "calcium_mg": 16, "vitamin_c_mg": 58.8, "protein_g": 0.7, "fiber_g": 2},
+      "allergen_risk": "low",
+      "safe_preparation": ["mash or puree", "cut into small pieces", "serve with yogurt"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent vitamin C source—pairs well with iron-rich foods. Can trigger rash around mouth."
+    },
+    {
+      "name": {"en": "Mango (ripe)", "de": "Mango (reif)"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.2, "calcium_mg": 11, "vitamin_c_mg": 36.4, "protein_g": 0.5, "fiber_g": 1.6},
+      "allergen_risk": "low",
+      "safe_preparation": ["scoop flesh from pit", "mash or cut into soft spears", "remove skin"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent vitamin C content. Very popular with babies. Slippery—mash for younger infants."
+    },
+    {
+      "name": {"en": "Kiwi", "de": "Kiwi"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.3, "calcium_mg": 34, "vitamin_c_mg": 92.7, "protein_g": 1.1, "fiber_g": 3},
+      "allergen_risk": "medium",
+      "safe_preparation": ["scoop flesh from skin", "mash or cut into small pieces", "remove seeds if desired"],
+      "appropriate_from_months": 6,
+      "notes": "Extremely high vitamin C. Can cause mouth irritation. Medium allergen risk—introduce carefully."
+    },
+    {
+      "name": {"en": "Sweet potato", "de": "Süßkartoffel"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 0.6, "calcium_mg": 30, "vitamin_c_mg": 2.4, "protein_g": 1.6, "fiber_g": 3},
+      "allergen_risk": "none",
+      "safe_preparation": ["bake or steam until very soft", "mash with breast milk or formula", "offer as soft spears"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent first food. Rich in beta-carotene (vitamin A). Naturally sweet—babies love it."
+    },
+    {
+      "name": {"en": "Carrot (cooked)", "de": "Möhre (gekocht)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 0.3, "calcium_mg": 30, "vitamin_c_mg": 3.6, "protein_g": 0.8, "fiber_g": 2.8},
+      "allergen_risk": "none",
+      "safe_preparation": ["steam until very soft", "mash or grate finely", "offer as soft spears for BLW"],
+      "appropriate_from_months": 6,
+      "notes": "Rich in beta-carotene. Raw carrots are choking hazard—always cook until soft for under 2 years."
+    },
+    {
+      "name": {"en": "Broccoli (steamed)", "de": "Brokkoli (gedämpft)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 0.7, "calcium_mg": 40, "vitamin_c_mg": 64, "protein_g": 2.8, "fiber_g": 2.4},
+      "allergen_risk": "none",
+      "safe_preparation": ["steam until soft but not mushy", "offer florets larger than fist (ironically safer)", "chop stems finely"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent vitamin C and folate. Floret 'trees' make great BLW food. Can cause gas."
+    },
+    {
+      "name": {"en": "Cauliflower (steamed)", "de": "Blumenkohl (gedämpft)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 0.4, "calcium_mg": 22, "vitamin_c_mg": 48, "protein_g": 1.9, "fiber_g": 2},
+      "allergen_risk": "none",
+      "safe_preparation": ["steam until soft", "mash or offer as soft florets", "roast for different texture"],
+      "appropriate_from_months": 6,
+      "notes": "Milder than broccoli. Good source of choline for brain development. Can cause gas."
+    },
+    {
+      "name": {"en": "Spinach (cooked)", "de": "Spinat (gekocht)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 3.6, "calcium_mg": 136, "vitamin_c_mg": 9.8, "protein_g": 2.9, "fiber_g": 2.4},
+      "allergen_risk": "none",
+      "safe_preparation": ["steam or wilt briefly", "chop finely", "mix into purees or eggs"],
+      "appropriate_from_months": 6,
+      "notes": "High iron and calcium. Note: Contains oxalates which reduce calcium absorption. Cook to reduce."
+    },
+    {
+      "name": {"en": "Zucchini (cooked)", "de": "Zucchini (gekocht)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 0.4, "calcium_mg": 16, "vitamin_c_mg": 12.9, "protein_g": 1.2, "fiber_g": 1.1},
+      "allergen_risk": "none",
+      "safe_preparation": ["steam or roast until soft", "mash or offer as spears", "remove seeds for younger babies"],
+      "appropriate_from_months": 6,
+      "notes": "Mild, well-tolerated vegetable. Good for adding moisture to meals. Low allergen risk."
+    },
+    {
+      "name": {"en": "Pumpkin (cooked)", "de": "Kürbis (gekocht)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 0.8, "calcium_mg": 21, "vitamin_c_mg": 8.3, "protein_g": 1, "fiber_g": 2.9},
+      "allergen_risk": "none",
+      "safe_preparation": ["roast or steam until soft", "mash or puree", "mix into oatmeal or yogurt"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent first food. Rich in beta-carotene. Naturally sweet flavor babies enjoy."
+    },
+    {
+      "name": {"en": "Peas (cooked)", "de": "Erbsen (gekocht)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 1.5, "calcium_mg": 25, "vitamin_c_mg": 14.2, "protein_g": 5.4, "fiber_g": 5.1},
+      "allergen_risk": "low",
+      "safe_preparation": ["steam until soft", "mash or flatten with fork", "split skins for younger babies"],
+      "appropriate_from_months": 6,
+      "notes": "Good plant protein source. Round shape is choking hazard—always mash or flatten."
+    },
+    {
+      "name": {"en": "Green beans (cooked)", "de": "Grüne Bohnen (gekocht)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 1, "calcium_mg": 37, "vitamin_c_mg": 9.7, "protein_g": 1.8, "fiber_g": 3.2},
+      "allergen_risk": "none",
+      "safe_preparation": ["steam until very soft", "mash or offer as very soft spears", "stringy bits removed"],
+      "appropriate_from_months": 6,
+      "notes": "Stringy texture can be challenging. Steam until very soft and remove any fibrous strings."
+    },
+    {
+      "name": {"en": "Butternut squash", "de": "Butternusskürbis"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 0.6, "calcium_mg": 41, "vitamin_c_mg": 21, "protein_g": 1, "fiber_g": 2.8},
+      "allergen_risk": "none",
+      "safe_preparation": ["roast or steam until very soft", "scoop flesh from skin", "mash or offer as spears"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent first food. Very high in vitamin A. Sweet, creamy texture popular with babies."
+    },
+    {
+      "name": {"en": "Beetroot (cooked)", "de": "Rote Bete (gekocht)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 0.8, "calcium_mg": 16, "vitamin_c_mg": 4.9, "protein_g": 1.6, "fiber_g": 2.8},
+      "allergen_risk": "none",
+      "safe_preparation": ["roast or boil until soft", "mash or grate finely", "peel before cooking"],
+      "appropriate_from_months": 6,
+      "notes": "Good iron source. Stains everything purple! Can cause pink/red urine—harmless."
+    },
+    {
+      "name": {"en": "Oats (rolled, cooked)", "de": "Haferflocken (gekocht)"},
+      "category": "grain",
+      "nutrients_per_100g": {"iron_mg": 4.7, "calcium_mg": 54, "vitamin_c_mg": 0, "protein_g": 13.2, "fiber_g": 10.6},
+      "allergen_risk": "low",
+      "safe_preparation": ["cook in breast milk, formula, or water until soft", "blend for smoother texture", "mix with fruit purees"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent iron-fortified first grain. Higher fiber and protein than rice cereal. Use certified gluten-free if needed."
+    },
+    {
+      "name": {"en": "Brown rice (cooked)", "de": "Brauner Reis (gekocht)"},
+      "category": "grain",
+      "nutrients_per_100g": {"iron_mg": 0.5, "calcium_mg": 10, "vitamin_c_mg": 0, "protein_g": 2.6, "fiber_g": 1.8},
+      "allergen_risk": "none",
+      "safe_preparation": ["cook until very soft", "mash or blend for younger babies", "mix with vegetables"],
+      "appropriate_from_months": 6,
+      "notes": "Whole grain option. Lower iron than oats. Can contain arsenic—rinse before cooking, limit to 1-2 servings/week."
+    },
+    {
+      "name": {"en": "Quinoa (cooked)", "de": "Quinoa (gekocht)"},
+      "category": "grain",
+      "nutrients_per_100g": {"iron_mg": 2.8, "calcium_mg": 17, "vitamin_c_mg": 0, "protein_g": 4.4, "fiber_g": 2.8},
+      "allergen_risk": "low",
+      "safe_preparation": ["rinse well before cooking", "cook until soft and fluffy", "mash slightly for younger babies"],
+      "appropriate_from_months": 6,
+      "notes": "Complete protein source. Rinse to remove bitter saponins. Small seeds—ensure fully cooked and soft."
+    },
+    {
+      "name": {"en": "Whole wheat pasta (cooked)", "de": "Vollkornnudeln (gekocht)"},
+      "category": "grain",
+      "nutrients_per_100g": {"iron_mg": 1.5, "calcium_mg": 21, "vitamin_c_mg": 0, "protein_g": 5.3, "fiber_g": 4.5},
+      "allergen_risk": "medium",
+      "safe_preparation": ["cook until very soft", "cut into small pieces", "offer larger shapes for BLW"],
+      "appropriate_from_months": 6,
+      "notes": "Contains gluten—introduce with caution if family history of celiac. Cut into age-appropriate pieces."
+    },
+    {
+      "name": {"en": "Whole grain bread (soft)", "de": "Vollkornbrot (weich)"},
+      "category": "grain",
+      "nutrients_per_100g": {"iron_mg": 2.5, "calcium_mg": 160, "vitamin_c_mg": 0, "protein_g": 13, "fiber_g": 7},
+      "allergen_risk": "medium",
+      "safe_preparation": ["offer very soft, fresh bread", "remove crust for younger babies", "lightly toast to reduce gumminess"],
+      "appropriate_from_months": 6,
+      "notes": "Contains gluten. Choose low-sodium varieties. Avoid if family history of celiac until consultation."
+    },
+    {
+      "name": {"en": "Millet (cooked)", "de": "Hirse (gekocht)"},
+      "category": "grain",
+      "nutrients_per_100g": {"iron_mg": 3, "calcium_mg": 8, "vitamin_c_mg": 0, "protein_g": 3.5, "fiber_g": 3.1},
+      "allergen_risk": "none",
+      "safe_preparation": ["cook in water or milk until soft", "mash or blend for smoother texture", "mix with fruit or vegetables"],
+      "appropriate_from_months": 6,
+      "notes": "Gluten-free grain. Good iron source. Mild flavor, versatile."
+    },
+    {
+      "name": {"en": "Barley (cooked)", "de": "Gerste (gekocht)"},
+      "category": "grain",
+      "nutrients_per_100g": {"iron_mg": 1.2, "calcium_mg": 11, "vitamin_c_mg": 0, "protein_g": 2.3, "fiber_g": 3.8},
+      "allergen_risk": "low",
+      "safe_preparation": ["cook until very soft", "mash or blend", "add to soups or stews"],
+      "appropriate_from_months": 6,
+      "notes": "Contains gluten. High fiber. Chewy texture—ensure very well cooked for babies."
+    },
+    {
+      "name": {"en": "Full-fat plain yogurt", "de": "Vollfett-Naturjoghurt"},
+      "category": "dairy",
+      "nutrients_per_100g": {"iron_mg": 0.1, "calcium_mg": 121, "vitamin_c_mg": 0.5, "protein_g": 3.5, "fiber_g": 0},
+      "allergen_risk": "high",
+      "safe_preparation": ["serve plain, no added sugar", "mix with fruit purees", "use as base for smoothies"],
+      "appropriate_from_months": 6,
+      "notes": "High allergen—introduce early. Choose full-fat, plain varieties. Avoid added sugars. Good probiotic source."
+    },
+    {
+      "name": {"en": "Cheddar cheese (mild)", "de": "Cheddar-Käse (mild)"},
+      "category": "dairy",
+      "nutrients_per_100g": {"iron_mg": 0.7, "calcium_mg": 721, "vitamin_c_mg": 0, "protein_g": 25, "fiber_g": 0},
+      "allergen_risk": "high",
+      "safe_preparation": ["grate finely", "melt into foods", "offer thin strips for self-feeding"],
+      "appropriate_from_months": 6,
+      "notes": "High allergen. High sodium—use sparingly, grate to distribute flavor. Good calcium source."
+    },
+    {
+      "name": {"en": "Cottage cheese", "de": "Hüttenkäse"},
+      "category": "dairy",
+      "nutrients_per_100g": {"iron_mg": 0.1, "calcium_mg": 83, "vitamin_c_mg": 0, "protein_g": 11, "fiber_g": 0},
+      "allergen_risk": "high",
+      "safe_preparation": ["mash curds for younger babies", "mix with fruit", "choose low-sodium varieties"],
+      "appropriate_from_months": 6,
+      "notes": "High allergen. Lower calcium than hard cheeses. Can be high sodium—check label. Good protein source."
+    },
+    {
+      "name": {"en": "Unsalted butter", "de": "Ungesalzene Butter"},
+      "category": "dairy",
+      "nutrients_per_100g": {"iron_mg": 0, "calcium_mg": 24, "vitamin_c_mg": 0, "protein_g": 0.9, "fiber_g": 0},
+      "allergen_risk": "high",
+      "safe_preparation": ["melt into warm foods", "spread very thinly on toast", "use for cooking vegetables"],
+      "appropriate_from_months": 6,
+      "notes": "High allergen. Small amounts only—high saturated fat. Good for fat-soluble vitamin absorption."
+    },
+    {
+      "name": {"en": "Ricotta cheese", "de": "Ricotta-Käse"},
+      "category": "dairy",
+      "nutrients_per_100g": {"iron_mg": 0.3, "calcium_mg": 206, "vitamin_c_mg": 0, "protein_g": 11, "fiber_g": 0},
+      "allergen_risk": "high",
+      "safe_preparation": ["mix into pasta or vegetables", "spread on soft bread", "blend into smooth purees"],
+      "appropriate_from_months": 6,
+      "notes": "High allergen. Lower sodium than hard cheeses. Creamy texture good for mixing."
+    },
+    {
+      "name": {"en": "Oatmeal cereal (iron-fortified)", "de": "Haferbrei (eisenverstärkt)"},
+      "category": "grain",
+      "nutrients_per_100g": {"iron_mg": 25, "calcium_mg": 200, "vitamin_c_mg": 0, "protein_g": 10, "fiber_g": 6},
+      "allergen_risk": "low",
+      "safe_preparation": ["mix with breast milk or formula to thin", "start with thin consistency", "gradually thicken"],
+      "appropriate_from_months": 4,
+      "notes": "Iron-fortified cereals are critical for 4-6 month olds. Helps prevent iron deficiency."
+    },
+    {
+      "name": {"en": "Pork tenderloin", "de": "Schweinefilet"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 1.3, "calcium_mg": 5, "vitamin_c_mg": 0, "protein_g": 26, "fiber_g": 0},
+      "allergen_risk": "none",
+      "safe_preparation": ["cook until no pink remains", "shred finely", "offer as soft strips"],
+      "appropriate_from_months": 6,
+      "notes": "Lean protein source. Lower iron than beef but well-tolerated. Ensure fully cooked."
+    },
+    {
+      "name": {"en": "Liver (beef, cooked)", "de": "Leber (Rind, gekocht)"},
+      "category": "protein",
+      "nutrients_per_100g": {"iron_mg": 6.5, "calcium_mg": 5, "vitamin_c_mg": 1.3, "protein_g": 20, "fiber_g": 0},
+      "allergen_risk": "none",
+      "safe_preparation": ["cook thoroughly", "puree or mash finely", "limit to 1x/week"],
+      "appropriate_from_months": 6,
+      "notes": "EXTREMELY high iron. Also high vitamin A—limit to small portions once weekly."
+    },
+    {
+      "name": {"en": "Prunes (stewed)", "de": "Backpflaumen (gedünstet)"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.9, "calcium_mg": 43, "vitamin_c_mg": 3.2, "protein_g": 1.2, "fiber_g": 7.1},
+      "allergen_risk": "none",
+      "safe_preparation": ["stew in water until soft", "mash or puree", "remove pits"],
+      "appropriate_from_months": 6,
+      "notes": "Excellent for constipation relief. High fiber and natural sorbitol."
+    },
+    {
+      "name": {"en": "Peach (ripe)", "de": "Pfirsich (reif)"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.3, "calcium_mg": 6, "vitamin_c_mg": 6.6, "protein_g": 0.9, "fiber_g": 1.5},
+      "allergen_risk": "low",
+      "safe_preparation": ["peel and mash ripe flesh", "steam if firm", "remove skin for younger babies"],
+      "appropriate_from_months": 6,
+      "notes": "Gentle on digestion. Choose very ripe, soft peaches. Can cause mild skin irritation."
+    },
+    {
+      "name": {"en": "Plum (cooked)", "de": "Pflaume (gekocht)"},
+      "category": "fruit",
+      "nutrients_per_100g": {"iron_mg": 0.3, "calcium_mg": 6, "vitamin_c_mg": 9.5, "protein_g": 0.7, "fiber_g": 1.4},
+      "allergen_risk": "none",
+      "safe_preparation": ["stew or steam until soft", "mash or puree", "remove pit"],
+      "appropriate_from_months": 6,
+      "notes": "Good for digestion. Cooked plums are gentler than raw."
+    },
+    {
+      "name": {"en": "Cucumber (peeled)", "de": "Gurke (geschält)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 0.3, "calcium_mg": 16, "vitamin_c_mg": 2.8, "protein_g": 0.7, "fiber_g": 0.5},
+      "allergen_risk": "none",
+      "safe_preparation": ["peel and remove seeds", "grate or mash", "offer soft spears"],
+      "appropriate_from_months": 6,
+      "notes": "High water content—hydrating. Mild flavor. Peel to reduce pesticide exposure."
+    },
+    {
+      "name": {"en": "Bell pepper (red, cooked)", "de": "Paprika (rot, gekocht)"},
+      "category": "vegetable",
+      "nutrients_per_100g": {"iron_mg": 0.4, "calcium_mg": 7, "vitamin_c_mg": 128, "protein_g": 1, "fiber_g": 2.1},
+      "allergen_risk": "none",
+      "safe_preparation": ["roast or steam until very soft", "remove skin and seeds", "mash or cut small"],
+      "appropriate_from_months": 6,
+      "notes": "HIGHEST vitamin C source. Cooking reduces vitamin C but makes digestible. Red has most nutrients."
+    },
+    {
+      "name": {"en": "Couscous (whole wheat, cooked)", "de": "Couscous (Vollkorn, gekocht)"},
+      "category": "grain",
+      "nutrients_per_100g": {"iron_mg": 1.5, "calcium_mg": 14, "vitamin_c_mg": 0, "protein_g": 5, "fiber_g": 3.5},
+      "allergen_risk": "medium",
+      "safe_preparation": ["cook until very soft and fluffy", "mash slightly", "mix with vegetables"],
+      "appropriate_from_months": 8,
+      "notes": "Contains gluten. Soft texture when cooked well. Good for introducing wheat."
+    }
+  ]
+}
