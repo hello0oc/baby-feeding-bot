@@ -191,12 +191,13 @@ Format Rules:
 ONBOARDING_AGE, ONBOARDING_ALLERGIES = range(2)
 
 MAIN_MENU_ROWS = [
-    ["📅 Weekly plan", "🛒 Shopping list"],
-    ["📚 History", "👶 Update age"],
-    ["🥜 Update allergies", "🥜 Allergen journal"],
-    ["❓ Help"],
+    ["📆 Today", "📅 Weekly plan"],
+    ["🛒 Shopping list", "📚 History"],
+    ["👶 Update age", "🥜 Update allergies"],
+    ["🥜 Allergen journal", "❓ Help"],
 ]
 MENU_TO_ACTION = {
+    "📆 Today": "today",
     "📅 Weekly plan": "weekly_plan",
     "🛒 Shopping list": "shopping_list",
     "📚 History": "history",
@@ -507,6 +508,8 @@ def safe_render_meal_card(
     slot_key: str,
     profile: Optional[dict[str, Any]],
     language: str = "en",
+    *,
+    condensed: bool = False,
 ) -> Optional[str]:
     """
     Render a meal card only if it passes safety check.
@@ -521,8 +524,8 @@ def safe_render_meal_card(
             safety.blocked_terms,
         )
         return None
-    card = render_meal_card(meal, slot_key, language)
-    if safety.has_warnings():
+    card = render_meal_card(meal, slot_key, language, condensed=condensed)
+    if safety.has_warnings() and not condensed:
         warning_line = "  ⚠️  " + " | ".join(safety.warnings[:2])
         card = card + "\n" + warning_line
     return card
@@ -804,14 +807,36 @@ def render_inspiration_message(summary: str, adaptations: List[str], language: s
     return text, keyboard
 
 
-def render_meal_card(meal: dict[str, Any], slot_key: str, language: str = "en") -> str:
+def render_meal_card(
+    meal: dict[str, Any],
+    slot_key: str,
+    language: str = "en",
+    *,
+    condensed: bool = False,
+) -> str:
     title = meal.get("title", "Meal")
     ingredients = meal.get("ingredients") or []
     quick_prep = meal.get("quick_prep", "").strip()
     safety_note = meal.get("safety_note", "").strip()
+
+    if condensed:
+        # Condensed: max 3 ingredients, no tags, no safety note (unless has_warnings handled externally)
+        lines = [f"🍽️  {title}"]
+        if ingredients:
+            cap = 3
+            ing = ingredients[:cap]
+            extra = len(ingredients) - cap
+            ing_text = ", ".join(ing) + (f" (+{extra})" if extra > 0 else "")
+            lines.append(f"   📋 {ing_text}")
+        if quick_prep:
+            # Truncate quick_prep to 50 chars in condensed mode
+            prep = quick_prep if len(quick_prep) <= 50 else quick_prep[:47] + "..."
+            lines.append(f"   ⚡ {prep}")
+        return "\n".join(lines)
+
+    # Full card
     tags = meal.get("tags") or []
     tag_display = f" [{', '.join(tags[:3])}]" if tags and isinstance(tags, list) else ""
-
     lines = [
         f"🍽️  {title}{tag_display}",
         "",
@@ -826,6 +851,66 @@ def render_meal_card(meal: dict[str, Any], slot_key: str, language: str = "en") 
     if safety_note:
         lines.append(f"   ⚠️  {safety_note}")
     return "\n".join(lines)
+
+
+def render_weekly_plan_digest(plan: dict[str, Any], language: str = "en") -> str:
+    """One scannable line per day — no meal details."""
+    days = plan.get("days") or {}
+    if not days:
+        return "No meals planned yet." if language == "en" else "Aún no hay comidas planificadas."
+    lines = ["📅 Weekly Plan", "━━━━━━━━━━━━━━━━━━━━", ""]
+    for day_key, day_label in DAY_LABELS.items():
+        day = days.get(day_key)
+        if not isinstance(day, dict):
+            continue
+        meals_in_day = [day.get(s) for s in SLOT_LABELS if day.get(s)]
+        if not meals_in_day:
+            lines.append(f"📆 {day_label}: —")
+            continue
+        titles = [m.get("title", "?")[:25] for m in meals_in_day if isinstance(m, dict)]
+        lines.append(f"📆 {day_label}: {' | '.join(titles)}")
+    return "\n".join(lines).strip()
+
+
+def render_day_detail(
+    plan: dict[str, Any],
+    day_key: str,
+    language: str = "en",
+    profile: Optional[dict[str, Any]] = None,
+) -> str:
+    """Expanded view of a single day with condensed meal cards."""
+    day_label = DAY_LABELS.get(day_key, day_key.title())
+    day = plan.get("days", {}).get(day_key)
+    if not isinstance(day, dict):
+        return f"No data for {day_label}."
+
+    lines = [f"📆 {day_label}", "━━━━━━━━━━━━━━━━━━━━", ""]
+    for slot_key, slot_label in SLOT_LABELS.items():
+        meal = day.get(slot_key)
+        if not isinstance(meal, dict):
+            continue
+        safe_card = safe_render_meal_card(meal, slot_key, profile, language, condensed=True)
+        if safe_card:
+            lines.append(safe_card)
+        # If blocked → skip silently (unsafe meals not shown)
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def build_weekly_plan_keyboard(language: str = "en") -> InlineKeyboardMarkup:
+    """Day picker for weekly plan — Mon, Tue, ... Sun + Full week."""
+    rows = [
+        [InlineKeyboardButton("📆 Mon", callback_data="day_mon"),
+         InlineKeyboardButton("📆 Tue", callback_data="day_tue"),
+         InlineKeyboardButton("📆 Wed", callback_data="day_wed"),
+         InlineKeyboardButton("📆 Thu", callback_data="day_thu")],
+        [InlineKeyboardButton("📆 Fri", callback_data="day_fri"),
+         InlineKeyboardButton("📆 Sat", callback_data="day_sat"),
+         InlineKeyboardButton("📆 Sun", callback_data="day_sun"),
+         InlineKeyboardButton("📋 Full week", callback_data="fullweek")],
+    ]
+    tip_row = [[InlineKeyboardButton("💾 Save plan", callback_data="saveplan")]]
+    return InlineKeyboardMarkup(rows + tip_row)
 
 
 def render_weekly_plan(
@@ -872,30 +957,33 @@ def render_single_meal(day_key: str, slot_key: str, meal: dict[str, Any], langua
 
 
 def render_history_message(plans: List[dict[str, Any]], inspirations: List[dict[str, Any]], language: str = "en") -> str:
+    """Digest-format history: one line per plan week, one line per inspiration."""
     plans_header = "📚 Recent Plans" if language == "en" else "📚 Planes Recientes"
     inspirations_header = "💡 Recent Inspirations" if language == "en" else "💡 Inspiraciones Recientes"
-    no_plans = "• No weekly plans yet." if language == "en" else "• Aún no hay planes semanales."
-    no_inspirations = "• No saved inspirations yet." if language == "en" else "• Aún no hay inspiraciones guardadas."
+    no_plans = "No weekly plans yet." if language == "en" else "Aún no hay planes semanales."
+    no_inspirations = "No saved inspirations yet." if language == "en" else "Aún no hay inspiraciones guardadas."
 
-    lines = [plans_header, ""]
+    lines = [plans_header, "━━━━━━━━━━━━━━━━━━━━", ""]
     if plans:
         for plan in plans:
-            lines.append(
-                f"• Week of {plan.get('week_start_date', 'unknown')} — "
-                f"updated {humanize_timestamp(str(plan.get('updated_at') or ''))}"
-            )
+            week = plan.get("week_start_date", "unknown")
+            updated = humanize_timestamp(str(plan.get("updated_at") or ""))
+            lines.append(f"• Week of {week} — updated {updated}")
     else:
-        lines.append(no_plans)
-    lines.extend(["", inspirations_header, ""])
+        lines.append(f"• {no_plans}")
+
+    lines.extend(["", inspirations_header, "━━━━━━━━━━━━━━━━━━━━", ""])
     if inspirations:
         for inspiration in inspirations:
-            summary_short = " ".join(compact_lines(str(inspiration.get("summary") or "")))
-            if len(summary_short) > 90:
-                summary_short = summary_short[:87] + "..."
+            summary = inspiration.get("summary") or ""
+            summary_short = " ".join(compact_lines(str(summary)))
+            # Cap at 80 chars
+            if len(summary_short) > 80:
+                summary_short = summary_short[:77] + "..."
             kind = str(inspiration.get("kind") or "idea").capitalize()
-            lines.append(f"• {kind}: {summary_short or 'Saved idea'}")
+            lines.append(f"• [{kind}] {summary_short or 'Saved idea'}")
     else:
-        lines.append(no_inspirations)
+        lines.append(f"• {no_inspirations}")
     return "\n".join(lines)
 
 
@@ -1492,7 +1580,12 @@ async def analyze_image_for_inspiration(image_bytes: bytes, *, language: str) ->
                 if isinstance(block, dict) and block.get("type") == "text":
                     text = str(block.get("text", "")).strip()
                     break
-            return text if text else ("Sorry, I had trouble analyzing that image." if language == "en" else "Lo siento, tuve problemas analizando esa imagen.")
+            if not text:
+                return "Sorry, I had trouble analyzing that image." if language == "en" else "Lo siento, tuve problemas analizando esa imagen."
+            # Cap at 200 chars to prevent verbose summaries
+            if len(text) > 200:
+                text = text[:197] + "..."
+            return text
     except Exception as e:
         logger.error("MiniMax image analysis exception: %s", e, exc_info=True)
         return "Sorry, I had trouble analyzing that image." if language == "en" else "Lo siento, tuve problemas analizando esa imagen."
@@ -1835,8 +1928,9 @@ async def generate_shopping_list(*, plan_json: dict[str, Any], language: str, te
     if telegram_user_id:
         negative_meal_ids = get_negatively_rated_meal_ids(telegram_user_id)
 
-    # Filter out negatively rated meals from plan
+    # Filter out negatively rated meals and collect deduplicated ingredients
     filtered_plan = plan_json.copy()
+    ingredient_counts: dict[str, int] = {}
     if "days" in filtered_plan:
         for day_key, day_data in list(filtered_plan.get("days", {}).items()):
             if isinstance(day_data, dict):
@@ -1844,15 +1938,29 @@ async def generate_shopping_list(*, plan_json: dict[str, Any], language: str, te
                     meal_id = f"{day_key}.{slot_key}"
                     if meal_id in negative_meal_ids:
                         del day_data[slot_key]
+                    else:
+                        for ing in (meal.get("ingredients") or []):
+                            key = ing.lower().strip()
+                            ingredient_counts[key] = ingredient_counts.get(key, 0) + 1
+
+    # Build deduplicated ingredient list with quantities
+    dedup_lines = []
+    for ing, count in sorted(ingredient_counts.items()):
+        if count >= 3:
+            dedup_lines.append(f"{count}× {ing}")
+        else:
+            dedup_lines.append(ing)
+    dedup_text = "\n".join(dedup_lines) or "No ingredients found."
 
     system = MEAL_SYSTEM_PROMPT
     if language == "es":
         system = system.replace("You are a helpful assistant", "Eres un asistente útil")
 
     prompt = (
-        "Create a consolidated shopping list grouped by category (produce, protein, dairy, pantry, other).\n"
-        "Avoid adding salt/sugar items. Keep it concise.\n\n"
-        f"Plan JSON:\n{json.dumps(filtered_plan, ensure_ascii=False)}\n\n"
+        "Create a shopping list grouped by category: 🥦 Produce, 🥩 Protein, 🧀 Dairy, 🫙 Pantry, 📦 Other.\n"
+        "Use the quantities provided. Avoid salt/sugar items. Keep it concise.\n"
+        "Deduplicated ingredients (with counts where count≥3):\n"
+        f"{dedup_text}\n\n"
         f"Respond in language: {'Spanish' if language == 'es' else 'English'}"
     )
     return await llm_generate(prompt, system_prompt=system, temperature=0.2, max_tokens=1200)
@@ -1993,6 +2101,125 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             else "Lo siento, no pude procesar esa imagen. Prueba con otra foto o envía una idea de comida."
         )
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+
+
+async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles day picker and full-week callbacks from the weekly plan digest view."""
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user = query.from_user
+    if not user:
+        return
+
+    upsert_user(user.id, user.language_code)
+    language = get_user_language(user.id, user.language_code or "en")
+    profile = get_profile(user.id)
+    week_start = week_start_for_plans(date.today())
+    existing = get_weekly_plan(user.id, week_start=week_start)
+
+    if not existing:
+        await query.edit_message_text("No plan found. Use /weekly_plan to build one.")
+        return
+
+    try:
+        plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
+    except Exception:
+        await query.edit_message_text("Couldn't read your plan. Try /weekly_plan to rebuild it.")
+        return
+
+    data = query.data
+
+    if data.startswith("day_"):
+        day_key = data.removeprefix("day_")
+        if day_key not in DAY_LABELS:
+            return
+        detail = render_day_detail(plan_obj, day_key, language, profile)
+        # Add back button
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("← Back to week", callback_data="fullweek")]
+        ])
+        await query.edit_message_text(detail, reply_markup=keyboard, parse_mode=None)
+        return
+
+    if data == "fullweek":
+        week_label = f"Week of {week_start.isoformat()}"
+        if language == "es":
+            week_label = f"Semana del {week_start.isoformat()}"
+        digest = render_weekly_plan_digest(plan_obj, language)
+        tip = "\n\n💡 Tap a day to expand →" if language == "en" else "\n\n💡 Toca un día para expandir →"
+        await query.edit_message_text(
+            f"📅 {week_label}{tip}\n\n{digest}",
+            reply_markup=build_weekly_plan_keyboard(language),
+            parse_mode=None,
+        )
+        return
+
+    if data == "saveplan":
+        # Just confirm — plan is already saved
+        msg = "💾 Plan saved!" if language == "en" else "💾 ¡Plan guardado!"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📆 View week", callback_data="fullweek")]
+        ])
+        await query.edit_message_text(msg, reply_markup=keyboard)
+        return
+
+
+async def today_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show only today's 5 meals with full details."""
+    if not update.message:
+        return
+    user = update.effective_user
+    if not user:
+        return
+    upsert_user(user.id, user.language_code)
+    language = get_user_language(user.id, user.language_code or "en")
+    profile = get_profile(user.id)
+    if not profile:
+        await update.message.reply_text("Please run /start first.", reply_markup=main_menu_markup())
+        return
+
+    week_start = week_start_for_plans(date.today())
+    existing = get_weekly_plan(user.id, week_start=week_start)
+    if not existing:
+        await update.message.reply_text(
+            "No plan for this week yet. Use /weekly_plan to build one.",
+            reply_markup=main_menu_markup(),
+        )
+        return
+
+    try:
+        plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
+    except Exception:
+        await update.message.reply_text(
+            "Couldn't read your plan. Try /weekly_plan.",
+            reply_markup=main_menu_markup(),
+        )
+        return
+
+    if not plan_has_content(plan_obj):
+        await update.message.reply_text(
+            "Plan looks empty. Use /weekly_plan to rebuild.",
+            reply_markup=main_menu_markup(),
+        )
+        return
+
+    # Find today's day key
+    today = date.today()
+    today_weekday = today.weekday()  # 0=Mon, 6=Sun
+    day_key_map = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri", 5: "sat", 6: "sun"}
+    day_key = day_key_map.get(today_weekday, "mon")
+    day_label = DAY_LABELS.get(day_key, day_key.title())
+    today_str = today.strftime("%a %b %d")
+
+    detail = render_day_detail(plan_obj, day_key, language, profile)
+    header = f"📆 {today_str} — {day_label}\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    await _reply_chunked(
+        update,
+        header + detail,
+        reply_markup=main_menu_markup(),
+    )
 
 
 async def handle_apply_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2154,6 +2381,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     action = MENU_TO_ACTION.get(text)
+    if action == "today":
+        await today_command(update, context)
+        return
     if action == "weekly_plan":
         await weekly_plan_command(update, context)
         return
@@ -2515,10 +2745,15 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             week_label = f"Week of {week_start.isoformat()}"
             if language == "es":
                 week_label = f"Semana del {week_start.isoformat()}"
-            await _reply_chunked(
-                update,
-                f"📅 {week_label}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
-                reply_markup=main_menu_markup(),
+            digest = render_weekly_plan_digest(plan_obj, language)
+            stats = get_meal_rating_stats(user.id, week_start)
+            footer = ""
+            if stats and stats.get("total_meals", 0) >= 3:
+                footer = f"\n\nYou've rated {stats['total_meals']} meals — shall I factor your preferences into next week's plan?"
+            tip = "\n\n💡 Tap a day to expand →" if language == "en" else "\n\n💡 Toca un día para expandir →"
+            await update.message.reply_text(
+                f"📅 {week_label}{tip}\n\n{digest}{footer}",
+                reply_markup=build_weekly_plan_keyboard(language),
             )
             return
     inspirations = get_recent_inspirations(user.id, limit=10)
@@ -2532,24 +2767,13 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
     week_label = f"Week of {week_start.isoformat()}"
-    tip = "Tip: after I suggest meal options, reply with \"Use 1 for Wednesday dinner\" to swap a meal."
     if language == "es":
         week_label = f"Semana del {week_start.isoformat()}"
-        tip = "Consejo: después de que sugiera opciones de comida, responde con \"Use 1 for Wednesday dinner\" para cambiar una comida."
-
-    # Check if user has enough feedback for the preference note
-    stats = get_meal_rating_stats(user.id, week_start)
-    preference_note = ""
-    if stats and stats.get("total_meals", 0) >= 3:
-        if language == "es":
-            preference_note = f"\n\nHas calificado {stats['total_meals']} comidas — ¿Quieres que tenga en cuenta tus preferencias en el próximo plan?"
-        else:
-            preference_note = f"\n\nYou've rated {stats['total_meals']} meals — shall I factor your preferences into next week's plan?"
-
-    await _reply_chunked(
-        update,
-        f"📅 {week_label}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}\n\n{tip}{preference_note}",
-        reply_markup=main_menu_markup(),
+    digest = render_weekly_plan_digest(plan_obj, language)
+    tip = "\n\n💡 Tap a day to expand →" if language == "en" else "\n\n💡 Toca un día para expandir →"
+    await update.message.reply_text(
+        f"📅 {week_label}{tip}\n\n{digest}",
+        reply_markup=build_weekly_plan_keyboard(language),
     )
 
 
@@ -3072,6 +3296,7 @@ def main() -> None:
 
     application.add_handler(onboarding)
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("today", today_command))
     application.add_handler(CommandHandler("set_age", set_age_command))
     application.add_handler(CommandHandler("set_allergies", set_allergies_command))
     application.add_handler(CommandHandler("weekly_plan", weekly_plan_command))
@@ -3084,6 +3309,7 @@ def main() -> None:
 
     # Inline keyboard callback handlers (must be added before generic text handler)
     application.add_handler(CallbackQueryHandler(handle_apply_callback, pattern=r"^(opt|selday|apply|back):"))
+    application.add_handler(CallbackQueryHandler(handle_plan_callback, pattern=r"^(day_|fullweek|saveplan)$"))
     application.add_handler(CallbackQueryHandler(handle_regen_callback, pattern=r"^regen_"))
 
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
