@@ -987,15 +987,58 @@ def render_history_message(plans: List[dict[str, Any]], inspirations: List[dict[
     return "\n".join(lines)
 
 
+def _render_shopping_list_from_json(raw: str, language: str = "en") -> str:
+    """
+    Parse LLM JSON response and render as formatted shopping list.
+    Falls back to stripped text if JSON parsing fails.
+    """
+    header = "🛒 Shopping List" if language == "en" else "🛒 Lista de Compras"
+    try:
+        # Strip markdown code fences
+        cleaned = re.sub(r"```(?:json)?\s*", "", raw.strip()).strip()
+        data = json.loads(cleaned)
+        if not isinstance(data, dict):
+            raise ValueError("Not a dict")
+    except Exception:
+        # Fallback: strip any remaining markdown and return as-is
+        fallback = re.sub(r"```", "", raw).strip()
+        return f"{header}\n━━━━━━━━━━━━━━━━━━━━\n\n{fallback}"
+
+    CATEGORY_EMOJI = {
+        "produce": "🥦 Produce",
+        "protein": "🥩 Protein",
+        "dairy": "🧀 Dairy",
+        "pantry": "🫙 Pantry",
+        "other": "📦 Other",
+    }
+    all_items = []
+    lines = [header, "━━━━━━━━━━━━━━━━━━━━", ""]
+    for key, label in CATEGORY_EMOJI.items():
+        items = data.get(key, [])
+        if not items:
+            continue
+        if isinstance(items, list):
+            text = " | ".join(str(i) for i in items)
+        else:
+            text = str(items)
+        lines.append(f"{label}")
+        lines.append(f"  {text}")
+        all_items.extend(items)
+
+    if not all_items:
+        fallback = re.sub(r"```", "", raw).strip()
+        return f"{header}\n━━━━━━━━━━━━━━━━━━━━\n\n{fallback}"
+
+    return "\n".join(lines)
+
+
 def format_shopping_list_message(list_text: str, language: str = "en") -> str:
-    cleaned = (list_text or "").strip()
-    if not cleaned:
+    if not (list_text or "").strip():
         fallback = "I couldn't build a shopping list yet. Please try again after generating a weekly plan."
         if language != "en":
             fallback = "No pude crear una lista de compras. Inténtalo de nuevo después de generar un plan semanal."
         return f"🛒 Shopping List\n\n{fallback}"
-    header = "🛒 Shopping List" if language == "en" else "🛒 Lista de Compras"
-    return f"{header}\n━━━━━━━━━━━━━━━━━━━━\n\n{cleaned}"
+    return _render_shopping_list_from_json(list_text, language)
 
 
 def parse_quick_apply_text(text: str) -> Optional[tuple[int, str, str]]:
@@ -1956,14 +1999,23 @@ async def generate_shopping_list(*, plan_json: dict[str, Any], language: str, te
     if language == "es":
         system = system.replace("You are a helpful assistant", "Eres un asistente útil")
 
+    lang = "Spanish" if language == "es" else "English"
     prompt = (
-        "Create a shopping list grouped by category: 🥦 Produce, 🥩 Protein, 🧀 Dairy, 🫙 Pantry, 📦 Other.\n"
-        "Use the quantities provided. Avoid salt/sugar items. Keep it concise.\n"
-        "Deduplicated ingredients (with counts where count≥3):\n"
-        f"{dedup_text}\n\n"
-        f"Respond in language: {'Spanish' if language == 'es' else 'English'}"
+        "You are a shopping list generator for a baby food meal plan.\n"
+        "Given the ingredients below (already deduplicated), create a clean shopping list.\n"
+        "Group items into exactly these 5 categories:\n"
+        "🥦 Produce  🥩 Protein  🧀 Dairy  🫙 Pantry  📦 Other\n\n"
+        "Rules:\n"
+        "- Use the quantities provided (e.g., 3× carrots). If no quantity is given, list the item once.\n"
+        "- Skip salt, sugar, and seasoning items.\n"
+        "- Keep each category concise (max 8 items per category).\n"
+        "- Respond ONLY with valid JSON in this exact structure (no markdown, no explanation):\n"
+        '{"produce": ["item1", "item2"], "protein": [], "dairy": [], "pantry": [], "other": []}\n\n'
+        f"Ingredients (deduplicated, with counts where count≥3):\n{dedup_text}\n\n"
+        f"Respond in {lang}. Return ONLY the JSON object."
     )
-    return await llm_generate(prompt, system_prompt=system, temperature=0.2, max_tokens=1200)
+    raw = await llm_generate(prompt, system_prompt=system, temperature=0.1, max_tokens=800)
+    return _render_shopping_list_from_json(raw, language)
 
 
 SAFE_FALLBACK_MEALS: dict[str, dict[str, Any]] = {
@@ -2136,11 +2188,16 @@ async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         if day_key not in DAY_LABELS:
             return
         detail = render_day_detail(plan_obj, day_key, language, profile)
-        # Add back button
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("← Back to week", callback_data="fullweek")]
         ])
-        await query.edit_message_text(detail, reply_markup=keyboard, parse_mode=None)
+        try:
+            await query.edit_message_text(detail, reply_markup=keyboard, parse_mode=None)
+        except Exception as e:
+            if "not modified" in str(e).lower():
+                await query.answer("Already showing this day", show_alert=False)
+            else:
+                await query.answer(f"Error: {e}", show_alert=True)
         return
 
     if data == "fullweek":
@@ -2149,20 +2206,31 @@ async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             week_label = f"Semana del {week_start.isoformat()}"
         digest = render_weekly_plan_digest(plan_obj, language)
         tip = "\n\n💡 Tap a day to expand →" if language == "en" else "\n\n💡 Toca un día para expandir →"
-        await query.edit_message_text(
-            f"📅 {week_label}{tip}\n\n{digest}",
-            reply_markup=build_weekly_plan_keyboard(language),
-            parse_mode=None,
-        )
+        try:
+            await query.edit_message_text(
+                f"📅 {week_label}{tip}\n\n{digest}",
+                reply_markup=build_weekly_plan_keyboard(language),
+                parse_mode=None,
+            )
+        except Exception as e:
+            if "not modified" in str(e).lower():
+                await query.answer("Already showing week view", show_alert=False)
+            else:
+                await query.answer(f"Error: {e}", show_alert=True)
         return
 
     if data == "saveplan":
-        # Just confirm — plan is already saved
         msg = "💾 Plan saved!" if language == "en" else "💾 ¡Plan guardado!"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("📆 View week", callback_data="fullweek")]
         ])
-        await query.edit_message_text(msg, reply_markup=keyboard)
+        try:
+            await query.edit_message_text(msg, reply_markup=keyboard)
+        except Exception as e:
+            if "not modified" in str(e).lower():
+                await query.answer("Plan already saved", show_alert=False)
+            else:
+                await query.answer(f"Error: {e}", show_alert=True)
         return
 
 
