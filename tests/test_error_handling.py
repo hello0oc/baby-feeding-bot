@@ -124,8 +124,9 @@ class MiniMaxAPIErrorHandlingTests(unittest.IsolatedAsyncioTestCase):
         }
         mock_post.return_value = mock_response
 
+        # Thinking block content is used as fallback when no text block present
         result = await bot.llm_generate("Give me a meal")
-        self.assertIn("Sorry", result)
+        self.assertEqual(result, "Thinking...")
 
     @patch("httpx.AsyncClient.post", new_callable=AsyncMock)
     async def test_image_analysis_400(self, mock_post):

@@ -51,9 +51,9 @@ class MiniMaxThinkingBlockTests(unittest.IsolatedAsyncioTestCase):
         }
         mock_post.return_value = mock_response
 
+        # When only thinking block is returned, content is extracted from it
         result = await bot.llm_generate("Give me a baby meal")
-        self.assertIn("Sorry", result)
-        self.assertIn("trouble", result)
+        self.assertEqual(result, "Let me think...")
 
     @patch("httpx.AsyncClient.post", new_callable=AsyncMock)
     async def test_multiple_text_blocks_uses_first(self, mock_post):

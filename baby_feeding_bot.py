@@ -1484,13 +1484,22 @@ async def llm_generate(
                 logger.error("MiniMax API error: %s - %s", response.status_code, response.text[:200], exc_info=True)
                 return friendly_error
             result = response.json()
-            # MiniMax may return thinking blocks before text — find the first text block
+            # MiniMax may return thinking blocks instead of text blocks
+            # even when thinking is disabled. Find text block first, then fall back to thinking.
             content = result.get("content") or []
             text = ""
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "text":
                     text = str(block.get("text", "")).strip()
                     break
+            # MiniMax may put response in thinking block instead of text block
+            # (especially when thinking is disabled but model falls back to it).
+            # If no text block found, try to extract content from thinking block.
+            if not text:
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "thinking":
+                        text = str(block.get("thinking", "") or "").strip()
+                        break
             if not text:
                 logger.error("MiniMax API returned blank text: %s", str(result)[:200], exc_info=True)
                 return friendly_error
@@ -2014,8 +2023,15 @@ async def generate_shopping_list(*, plan_json: dict[str, Any], language: str, te
         f"Ingredients (deduplicated, with counts where count≥3):\n{dedup_text}\n\n"
         f"Respond in {lang}. Return ONLY the JSON object."
     )
-    raw = await llm_generate(prompt, system_prompt=system, temperature=0.1, max_tokens=800)
-    return _render_shopping_list_from_json(raw, language)
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        raw = await llm_generate(prompt, system_prompt=system, temperature=0.1, max_tokens=800)
+        # If LLM returned blank (thinking block with no text), retry
+        if raw == "Sorry, I had trouble generating a response right now.":
+            logger.warning("Shopping list generation attempt %d returned blank, retrying", attempt + 1)
+            if attempt < max_retries:
+                continue
+        return _render_shopping_list_from_json(raw, language)
 
 
 SAFE_FALLBACK_MEALS: dict[str, dict[str, Any]] = {
@@ -2157,81 +2173,108 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles day picker and full-week callbacks from the weekly plan digest view."""
-    query = update.callback_query
-    if not query:
-        return
-    await query.answer()
-    user = query.from_user
-    if not user:
-        return
-
-    upsert_user(user.id, user.language_code)
-    language = get_user_language(user.id, user.language_code or "en")
-    profile = get_profile(user.id)
-    week_start = week_start_for_plans(date.today())
-    existing = get_weekly_plan(user.id, week_start=week_start)
-
-    if not existing:
-        await query.edit_message_text("No plan found. Use /weekly_plan to build one.")
-        return
-
     try:
-        plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
-    except Exception:
-        await query.edit_message_text("Couldn't read your plan. Try /weekly_plan to rebuild it.")
-        return
-
-    data = query.data
-
-    if data.startswith("day_"):
-        day_key = data.removeprefix("day_")
-        if day_key not in DAY_LABELS:
+        query = update.callback_query
+        if not query:
             return
-        detail = render_day_detail(plan_obj, day_key, language, profile)
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("← Back to week", callback_data="fullweek")]
-        ])
-        try:
-            await query.edit_message_text(detail, reply_markup=keyboard, parse_mode=None)
-        except Exception as e:
-            if "not modified" in str(e).lower():
-                await query.answer("Already showing this day", show_alert=False)
-            else:
-                await query.answer(f"Error: {e}", show_alert=True)
-        return
+        await query.answer()
+        user = query.from_user
+        if not user:
+            return
 
-    if data == "fullweek":
-        week_label = f"Week of {week_start.isoformat()}"
-        if language == "es":
-            week_label = f"Semana del {week_start.isoformat()}"
-        digest = render_weekly_plan_digest(plan_obj, language)
-        tip = "\n\n💡 Tap a day to expand →" if language == "en" else "\n\n💡 Toca un día para expandir →"
-        try:
-            await query.edit_message_text(
-                f"📅 {week_label}{tip}\n\n{digest}",
-                reply_markup=build_weekly_plan_keyboard(language),
-                parse_mode=None,
-            )
-        except Exception as e:
-            if "not modified" in str(e).lower():
-                await query.answer("Already showing week view", show_alert=False)
-            else:
-                await query.answer(f"Error: {e}", show_alert=True)
-        return
+        logger.info(
+            "handle_plan_callback: data=%r user_id=%s msg_id=%s",
+            query.data,
+            user.id,
+            query.message.message_id if query.message else None,
+        )
+        upsert_user(user.id, user.language_code)
+        language = get_user_language(user.id, user.language_code or "en")
+        profile = get_profile(user.id)
+        week_start = week_start_for_plans(date.today())
+        existing = get_weekly_plan(user.id, week_start=week_start)
 
-    if data == "saveplan":
-        msg = "💾 Plan saved!" if language == "en" else "💾 ¡Plan guardado!"
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📆 View week", callback_data="fullweek")]
-        ])
+        if not existing:
+            try:
+                await query.edit_message_text("No plan found. Use /weekly_plan to build one.")
+            except Exception as e:
+                logger.error("Error responding to callback: %s", e)
+            return
+
         try:
-            await query.edit_message_text(msg, reply_markup=keyboard)
-        except Exception as e:
-            if "not modified" in str(e).lower():
-                await query.answer("Plan already saved", show_alert=False)
-            else:
-                await query.answer(f"Error: {e}", show_alert=True)
-        return
+            plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
+        except Exception:
+            try:
+                await query.edit_message_text("Couldn't read your plan. Try /weekly_plan to rebuild it.")
+            except Exception as e:
+                logger.error("Error editing message: %s", e)
+            return
+
+        data = query.data
+
+        if data.startswith("day_"):
+            day_key = data.removeprefix("day_")
+            if day_key not in DAY_LABELS:
+                return
+            detail = render_day_detail(plan_obj, day_key, language, profile)
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("\u2190 Back to week", callback_data="fullweek")]
+            ])
+            try:
+                await query.edit_message_text(detail, reply_markup=keyboard, parse_mode=None)
+            except Exception as e:
+                err_str = str(e).lower()
+                if "not modified" in err_str:
+                    await query.answer("Already showing this day", show_alert=False)
+                else:
+                    logger.error("Error editing day message: %s", e)
+                    await query.answer("Error showing day view", show_alert=True)
+            return
+
+        if data == "fullweek":
+            week_label = f"Week of {week_start.isoformat()}"
+            if language == "es":
+                week_label = f"Semana del {week_start.isoformat()}"
+            digest = render_weekly_plan_digest(plan_obj, language)
+            tip = "\n\n\U0001f4a1 Tap a day to expand \u2192" if language == "en" else "\n\n\U0001f4a1 Toca un d\u00eda para expandir \u2192"
+            try:
+                await query.edit_message_text(
+                    f"\U0001f4c5 {week_label}{tip}\n\n{digest}",
+                    reply_markup=build_weekly_plan_keyboard(language),
+                    parse_mode=None,
+                )
+            except Exception as e:
+                err_str = str(e).lower()
+                if "not modified" in err_str:
+                    await query.answer("Already showing week view", show_alert=False)
+                else:
+                    logger.error("Error editing fullweek message: %s", e)
+                    await query.answer("Error refreshing week view", show_alert=True)
+            return
+
+        if data == "saveplan":
+            msg = "\U0001f4be Plan saved!" if language == "en" else "\U0001f4be \u00a1Plan guardado!"
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("\U0001f4c5 View week", callback_data="fullweek")]
+            ])
+            try:
+                await query.edit_message_text(msg, reply_markup=keyboard)
+            except Exception as e:
+                err_str = str(e).lower()
+                if "not modified" in err_str:
+                    await query.answer("Plan already saved", show_alert=False)
+                else:
+                    logger.error("Error editing saveplan message: %s", e)
+                    await query.answer("Error saving plan", show_alert=True)
+            return
+
+    except Exception as e:
+        logger.error("handle_plan_callback exception: %s", e, exc_info=True)
+        try:
+            await query.answer(f"Error: {e}", show_alert=True)
+        except Exception:
+            pass
+
 
 
 async def today_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3384,6 +3427,10 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     logger.info("Bot is running! Press Ctrl+C to stop.")
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        logger.error("Unhandled exception in bot: %s: %s", context.error.__class__.__name__, context.error, exc_info=True)
+
+    application.add_error_handler(error_handler)
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
