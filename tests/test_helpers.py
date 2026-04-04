@@ -82,6 +82,44 @@ class HelperTests(unittest.TestCase):
         self.assertNotIn("lunch", normalized["days"]["mon"])
         self.assertEqual(normalized["days"]["wed"]["dinner"]["ingredients"], ["peas", "carrots"])
 
+    def test_normalize_plan_dict_handles_full_day_names(self):
+        """normalize_plan_dict should accept full day names from LLM (e.g. 'Monday')."""
+        raw_plan = {
+            "week_start_date": "2026-03-30",
+            "days": {
+                "Monday": {
+                    "breakfast": {"title": "Oatmeal", "ingredients": ["oats", "banana"]},
+                    "lunch": {"title": "Veggie Puree", "ingredients": ["carrot", "pea"]},
+                },
+                "Wednesday": {
+                    "dinner": {"title": "Fish", "ingredients": ["cod", "sweet potato"]},
+                },
+            },
+        }
+        normalized = bot.normalize_plan_dict(raw_plan, week_start=bot.date(2026, 3, 30))
+        self.assertIn("mon", normalized["days"])
+        self.assertIn("wed", normalized["days"])
+        self.assertIn("breakfast", normalized["days"]["mon"])
+        self.assertIn("lunch", normalized["days"]["mon"])
+        self.assertIn("dinner", normalized["days"]["wed"])
+        self.assertEqual(normalized["days"]["mon"]["breakfast"]["title"], "Oatmeal")
+        self.assertEqual(normalized["days"]["wed"]["dinner"]["title"], "Fish")
+
+    def test_normalize_plan_dict_handles_mixed_day_names(self):
+        """normalize_plan_dict should handle a mix of abbreviated and full day names."""
+        raw_plan = {
+            "week_start_date": "2026-04-06",
+            "days": {
+                "mon": {"breakfast": {"title": "Porridge", "ingredients": ["oats"]}},
+                "Tuesday": {"lunch": {"title": "Soup", "ingredients": ["broth"]}},
+                "wed": {"snack1": {"title": "Apple", "ingredients": ["apple"]}},
+            },
+        }
+        normalized = bot.normalize_plan_dict(raw_plan, week_start=bot.date(2026, 4, 6))
+        self.assertIn("mon", normalized["days"])
+        self.assertIn("tue", normalized["days"])
+        self.assertIn("wed", normalized["days"])
+
     def test_render_inspiration_message_is_actionable(self):
         text, keyboard = bot.render_inspiration_message(
             "- Pasta bake inspiration",

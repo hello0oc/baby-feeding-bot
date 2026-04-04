@@ -326,9 +326,21 @@ class NormalizeEdgeCaseTests(unittest.TestCase):
         self.assertEqual(bot.parse_int_or_default("12.9", 10), 12)
 
     def test_parse_int_or_default_with_units(self):
-        """parse_int_or_default extracts number even with trailing units."""
+        """parse_int_or_default only accepts numbers at START of text.
+        
+        This prevents meal ideas that contain numbers (e.g. '12 sweet potato')
+        from being misread as age values. Numbers must be at the very start,
+        optionally followed by 'months' or 'm'.
+        """
+        # Starts with number → accepted
         self.assertEqual(bot.parse_int_or_default("12months", 10), 12)
-        self.assertEqual(bot.parse_int_or_default("age: 14", 10), 14)
+        self.assertEqual(bot.parse_int_or_default("12 months", 10), 12)
+        self.assertEqual(bot.parse_int_or_default("12m", 10), 12)
+        self.assertEqual(bot.parse_int_or_default("18", 10), 18)
+        # Does NOT start with a number → rejected (meal ideas with numbers)
+        self.assertEqual(bot.parse_int_or_default("age: 14", 10), 10)
+        self.assertEqual(bot.parse_int_or_default("12 sweet potato", 10), 10)
+        self.assertEqual(bot.parse_int_or_default("sweet potato 12", 10), 10)
 
     def test_normalize_allergies_with_duplicates(self):
         """normalize_allergies removes duplicates from comma list."""

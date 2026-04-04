@@ -546,6 +546,51 @@ def compact_lines(text: str) -> List[str]:
     return [clean_bullet(line) for line in (text or "").splitlines() if clean_bullet(line)]
 
 
+def _split_text(text: str, max_len: int = 4000) -> List[str]:
+    """Split text into chunks of at most max_len chars, preferring line boundaries."""
+    if not text:
+        return []
+    if len(text) <= max_len:
+        return [text]
+    chunks: List[str] = []
+    while text:
+        chunk = text[:max_len]
+        last_newline = chunk.rfind("\n")
+        if last_newline > int(max_len * 0.7):
+            split_at = last_newline
+        else:
+            split_at = chunk.rfind(" ", int(max_len * 0.8), max_len)
+        if split_at < int(max_len * 0.5):
+            split_at = max_len
+        chunks.append(text[:split_at].strip())
+        text = text[split_at:].lstrip()
+    return [c for c in chunks if c]
+
+
+async def _reply_chunked(update: Update, text: str, reply_markup=None, max_len: int = 4000) -> None:
+    """Reply with text split into multiple messages if needed."""
+    chunks = _split_text(text, max_len)
+    for i, chunk in enumerate(chunks):
+        kwargs: dict[str, Any] = {"text": chunk}
+        if reply_markup and i == len(chunks) - 1:
+            kwargs["reply_markup"] = reply_markup
+        await update.message.reply_text(**kwargs)
+    if not chunks:
+        await update.message.reply_text("(empty)", reply_markup=reply_markup)
+
+
+async def _send_chunked(chat, text: str, reply_markup=None, max_len: int = 4000) -> None:
+    """Send text to a chat in multiple messages if needed."""
+    chunks = _split_text(text, max_len)
+    for i, chunk in enumerate(chunks):
+        kwargs: dict[str, Any] = {"text": chunk}
+        if reply_markup and i == len(chunks) - 1:
+            kwargs["reply_markup"] = reply_markup
+        await chat.send_message(**kwargs)
+    if not chunks:
+        await chat.send_message("(empty)", reply_markup=reply_markup)
+
+
 def humanize_timestamp(value: str) -> str:
     if not value:
         return "recently"
@@ -619,13 +664,28 @@ def normalize_plan_dict(raw: Any, *, week_start: date) -> dict[str, Any]:
     days_raw = raw.get("days") if isinstance(raw, dict) else None
     normalized_days: dict[str, Any] = {}
     if isinstance(days_raw, dict):
-        for day_key in DAY_LABELS:
-            day_data = days_raw.get(day_key)
+        # Iterate over ALL keys MiniMax might have used (e.g. "Monday", "mon", "Monday ": "mon")
+        # and normalize them to our canonical keys (mon, tue, ...).
+        for raw_day_key, day_data in days_raw.items():
             if not isinstance(day_data, dict):
                 continue
+            # Try the raw key directly, then try normalize_day
+            day_key = normalize_day(raw_day_key)
+            if not day_key:
+                # Also try the title-case version in case MiniMax used "Monday" etc.
+                day_key = normalize_day(raw_day_key.strip().title())
+            if not day_key:
+                continue  # Still unknown — skip
             normalized_slots: dict[str, Any] = {}
-            for slot_key in SLOT_LABELS:
-                meal = normalize_meal_dict(day_data.get(slot_key))
+            # Iterate over all slot keys MiniMax might have used for this day
+            for raw_slot_key, meal_data in day_data.items():
+                # Try the raw slot key directly, then normalize
+                slot_key = normalize_slot(raw_slot_key)
+                if not slot_key:
+                    slot_key = normalize_slot(raw_slot_key.strip().lower())
+                if not slot_key:
+                    continue  # Unknown slot — skip
+                meal = normalize_meal_dict(meal_data)
                 if meal:
                     normalized_slots[slot_key] = meal
             if normalized_slots:
@@ -1310,13 +1370,25 @@ async def llm_generate(
 
 
 def parse_int_or_default(text: str, default: int) -> int:
+    """Extract age in months from the START of text only.
+    
+    Only accepts numbers at the very beginning of the text (possibly surrounded
+    by whitespace), optionally followed by 'months' or 'm'. This prevents
+    meal ideas that happen to contain numbers (e.g. '12 sweet potato')
+    from being misread as age values.
+    """
     text = (text or "").strip()
     if not text:
         return default
-    m = re.search(r"\d+", text)
+    # Match a number at start, optionally followed by:
+    #   - decimal part (e.g. "12.5")
+    #   - "months" or "m" (with or without preceding space, e.g. "12months" or "12 months")
+    # then end of string. This rejects meal ideas like "12 sweet potato"
+    # but accepts "12 months", "12months", "12m", "12.5 months".
+    m = re.match(r"^\s*(\d+)(?:\.\d+)?(?:months?|m)?(?:\s+(?:months?|m))?$", text, re.IGNORECASE)
     if not m:
         return default
-    value = int(m.group(0))
+    value = int(m.group(1))
     if value < 4:
         return 4
     if value > 36:
@@ -1692,7 +1764,7 @@ async def generate_weekly_plan(
         '{ "week_start_date": "YYYY-MM-DD", "days": { "mon": { "breakfast": {...}, "snack1": {...}, "lunch": {...}, "snack2": {...}, "dinner": {...} }, "...": "..." } }\n\n'
         f"Respond in language: {'Spanish' if language == 'es' else 'English'}"
     )
-    text = await llm_generate(prompt, system_prompt=system, temperature=0.2, max_tokens=2500)
+    text = await llm_generate(prompt, system_prompt=system, temperature=0.2, max_tokens=5000)
     parsed = parse_json_object(text)
     if not parsed:
         return {"week_start_date": week_start.isoformat(), "days": {}, "raw": text, "error": "parse_failed"}
@@ -2048,8 +2120,8 @@ async def handle_apply_callback(update: Update, context: ContextTypes.DEFAULT_TY
         day_label = DAY_LABELS.get(day_key, day_key.title())
         slot_label = SLOT_LABELS.get(slot_key, slot_key).lower()
         confirm = f"✅ Applied Option {option_number} to {day_label} {slot_label}!"
-        await context.bot.send_message(
-            query.message.chat_id,
+        await _send_chunked(
+            query.message.chat,
             f"{confirm}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
             reply_markup=main_menu_markup(),
         )
@@ -2205,8 +2277,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         plan_obj.setdefault("days", {}).setdefault(day_key, {})[slot_key] = normalized_meal
         upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
-        await update.message.reply_text(
-            f"{render_single_meal(day_key, slot_key, normalized_meal, language)}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",            reply_markup=main_menu_markup(),
+        await _reply_chunked(
+            update,
+            f"{render_single_meal(day_key, slot_key, normalized_meal, language)}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
+            reply_markup=main_menu_markup(),
         )
         return
     await update.message.chat.send_action("typing")
@@ -2441,7 +2515,8 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             week_label = f"Week of {week_start.isoformat()}"
             if language == "es":
                 week_label = f"Semana del {week_start.isoformat()}"
-            await update.message.reply_text(
+            await _reply_chunked(
+                update,
                 f"📅 {week_label}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
                 reply_markup=main_menu_markup(),
             )
@@ -2471,7 +2546,8 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             preference_note = f"\n\nYou've rated {stats['total_meals']} meals — shall I factor your preferences into next week's plan?"
 
-    await update.message.reply_text(
+    await _reply_chunked(
+        update,
         f"📅 {week_label}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}\n\n{tip}{preference_note}",
         reply_markup=main_menu_markup(),
     )
@@ -2516,7 +2592,7 @@ async def shopping_list_command(update: Update, context: ContextTypes.DEFAULT_TY
         return
     await update.message.chat.send_action("typing")
     list_text = await generate_shopping_list(plan_json=plan_obj, language=language, telegram_user_id=user.id)
-    await update.message.reply_text(format_shopping_list_message(list_text, language), reply_markup=main_menu_markup())
+    await _reply_chunked(update, format_shopping_list_message(list_text, language), reply_markup=main_menu_markup())
 
 
 async def allergen_journal_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2638,7 +2714,7 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     language = get_user_language(user.id, user.language_code or "en")
     plans = get_recent_plans(user.id, limit=3)
     inspirations = get_recent_inspirations(user.id, limit=5)
-    await update.message.reply_text(render_history_message(plans, inspirations, language), reply_markup=main_menu_markup())
+    await _reply_chunked(update, render_history_message(plans, inspirations, language), reply_markup=main_menu_markup())
 
 
 def normalize_day(day: str) -> Optional[str]:
@@ -2765,7 +2841,8 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
     plan_obj.setdefault("days", {}).setdefault(day_key, {})[slot_key] = normalized_meal
     upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
-    await update.message.reply_text(
+    await _reply_chunked(
+        update,
         f"{render_single_meal(day_key, slot_key, normalized_meal, language)}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
         reply_markup=main_menu_markup(),
     )
@@ -2970,8 +3047,8 @@ async def handle_regen_callback(update: Update, context: ContextTypes.DEFAULT_TY
     # regen_accept — save the new meal
     await query.edit_message_reply_markup(reply_markup=None)
     upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
-    await context.bot.send_message(
-        query.message.chat_id,
+    await _send_chunked(
+        query.message.chat,
         f"✅ Accepted! {day_key.title()} {slot_key} updated.\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
         reply_markup=main_menu_markup(),
     )
