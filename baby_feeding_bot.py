@@ -195,6 +195,7 @@ MAIN_MENU_ROWS = [
     ["🛒 Shopping list", "📚 History"],
     ["👶 Update age", "🥜 Update allergies"],
     ["🥜 Allergen journal", "❓ Help"],
+    ["🌐 EN/ES", "👤 Profile"],
 ]
 MENU_TO_ACTION = {
     "📆 Today": "today",
@@ -205,6 +206,8 @@ MENU_TO_ACTION = {
     "🥜 Update allergies": "update_allergies",
     "🥜 Allergen journal": "allergen_journal",
     "❓ Help": "help",
+    "🌐 EN/ES": "toggle_lang",
+    "👤 Profile": "profile",
 }
 DAY_LABELS = {
     "mon": "Monday",
@@ -784,6 +787,63 @@ def build_slot_keyboard(option_number: int, day_key: str) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(rows)
 
 
+def severity_indicator(severity: Optional[str], outcome: Optional[str], language: str = "en") -> str:
+    """Return emoji indicator for allergen introduction severity/outcome."""
+    outcome_str = (outcome or "").lower()
+    severity_str = (severity or "").lower()
+    if outcome_str == "tolerated":
+        return "✅"
+    if severity_str == "severe" or outcome_str == "reaction":
+        return "🚨"
+    if severity_str == "moderate":
+        return "⚠️ moderate"
+    if severity_str == "mild":
+        return "⚠️ mild"
+    return "❓"
+
+
+SEVERITY_LEVELS = ["mild", "moderate", "severe"]
+OUTCOME_VALUES = ["tolerated", "reaction", "unknown"]
+
+
+def build_allergen_journal_keyboard(language: str = "en") -> InlineKeyboardMarkup:
+    """Build inline keyboard for allergen journal: log new + quick-add common allergens."""
+    rows = [
+        [InlineKeyboardButton("🥜 Log new allergen", callback_data="aj_new")],
+        [
+            InlineKeyboardButton("🥛 Milk", callback_data="aj_quick:milk"),
+            InlineKeyboardButton("🥚 Egg", callback_data="aj_quick:egg"),
+            InlineKeyboardButton("🥜 Peanut", callback_data="aj_quick:peanut"),
+        ],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def build_severity_keyboard() -> InlineKeyboardMarkup:
+    """Build inline keyboard to pick severity level."""
+    rows = [
+        [
+            InlineKeyboardButton("✅ Tolerated", callback_data="intro_outcome:tolerated"),
+        ],
+        [
+            InlineKeyboardButton("⚠️ Mild", callback_data="intro_severity:mild"),
+            InlineKeyboardButton("⚠️ Moderate", callback_data="intro_severity:moderate"),
+            InlineKeyboardButton("🚨 Severe", callback_data="intro_severity:severe"),
+        ],
+        [
+            InlineKeyboardButton("❓ Unknown", callback_data="intro_severity:unknown"),
+        ],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def build_day_detail_keyboard(day_key: str, language: str = "en") -> InlineKeyboardMarkup:
+    """Build inline keyboard for day detail view: back + edit slots."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("« Back to week", callback_data="fullweek")],
+    ])
+
+
 def render_inspiration_message(summary: str, adaptations: List[str], language: str = "en") -> tuple[str, InlineKeyboardMarkup]:
     intro = "Here's what I found:" if language == "en" else "Esto es lo que encontré:"
     option_prompt = 'Tap "Option 1" or "Option 2" below to choose, then pick a day and meal slot.'
@@ -853,7 +913,85 @@ def render_meal_card(
     return "\n".join(lines)
 
 
-def render_weekly_plan_digest(plan: dict[str, Any], language: str = "en") -> str:
+def generate_nutrition_summary(plan: dict[str, Any], age_months: int = 12, language: str = "en") -> str:
+    """
+    Generate a simple nutrition summary paragraph for a weekly plan.
+    Checks iron, calcium, protein tags against approximate targets.
+    """
+    header = "📊 Nutrition Summary" if language == "en" else "📊 Resumen Nutricional"
+
+    iron_tags = {"iron-rich", "iron"}
+    cal_tags = {"calcium", "calcium-rich"}
+    protein_tags = {"protein", "protein-rich"}
+    vit_c_tags = {"vitamin c", "vitamin-c", "vit c"}
+
+    day_iron = []
+    day_cal = []
+    day_protein = []
+    day_vitc = []
+
+    days = plan.get("days") or {}
+    for day_key, day_label in DAY_LABELS.items():
+        day = days.get(day_key, {})
+        has_iron = False
+        has_cal = False
+        has_protein = False
+        has_vitc = False
+        for meal in day.values():
+            if not isinstance(meal, dict):
+                continue
+            tags = [t.lower() for t in (meal.get("tags") or [])]
+            if any(t in iron_tags for t in tags):
+                has_iron = True
+            if any(t in cal_tags for t in tags):
+                has_cal = True
+            if any(t in protein_tags for t in tags):
+                has_protein = True
+            if any(t in vit_c_tags for t in tags):
+                has_vitc = True
+        if has_iron:
+            day_iron.append(day_label[:3])
+        if has_cal:
+            day_cal.append(day_label[:3])
+        if has_protein:
+            day_protein.append(day_label[:3])
+        if has_vitc:
+            day_vitc.append(day_label[:3])
+
+    lines = [header, "━━━━━━━━━━━━━━━━━━━━", ""]
+
+    if age_months < 12:
+        lines.append("⚠️ Under 12 months: breastmilk/formula is primary nutrition.")
+        lines.append("")
+        return "\n".join(lines)
+
+    # Target: at least 4 days each for iron/calcium
+    if day_iron:
+        lines.append(f"🔴 Iron: {', '.join(day_iron[:5])} — {'✅ Good coverage' if len(day_iron) >= 4 else '⚠️ Low — consider iron-fortified cereals or meats'}")
+    else:
+        lines.append("🔴 Iron: ❌ No iron-rich meals detected — prioritize iron sources this week")
+
+    if day_cal:
+        lines.append(f"🧀 Calcium: {', '.join(day_cal[:5])} — {'✅ Good coverage' if len(day_cal) >= 4 else '⚠️ Low — include dairy or fortified foods'}")
+    else:
+        lines.append("🧀 Calcium: ❌ No calcium-rich meals detected — add dairy or fortified foods")
+
+    if day_protein:
+        lines.append(f"🥩 Protein: {', '.join(day_protein[:5])} — {'✅ Good coverage' if len(day_protein) >= 4 else '⚠️ Low on some days'}")
+    else:
+        lines.append("🥩 Protein: ❌ No protein-rich meals detected — add fish, meat, or legumes")
+
+    if day_vitc:
+        lines.append(f"🍊 Vitamin C: {', '.join(day_vitc[:5])} — pairs well with iron-rich meals for absorption")
+    else:
+        lines.append("🍊 Vitamin C: ❌ None detected — pair iron meals with citrus or berries for better absorption")
+
+    lines.append("")
+    tip = "💡 Tip: Serve iron-rich foods with vitamin C (e.g., strawberry with fortified cereal) to boost absorption."
+    if language == "es":
+        tip = "💡 Consejo: Sirve alimentos ricos en hierro con vitamina C (ej., fresa con cereal fortificado) para mejorar la absorción."
+    lines.append(tip)
+    return "\n".join(lines)
     """One scannable line per day — no meal details."""
     days = plan.get("days") or {}
     if not days:
@@ -898,7 +1036,7 @@ def render_day_detail(
 
 
 def build_weekly_plan_keyboard(language: str = "en") -> InlineKeyboardMarkup:
-    """Day picker for weekly plan — Mon, Tue, ... Sun + Full week."""
+    """Day picker for weekly plan — Mon, Tue, ... Sun + Full week + Nutrition."""
     rows = [
         [InlineKeyboardButton("📆 Mon", callback_data="day_mon"),
          InlineKeyboardButton("📆 Tue", callback_data="day_tue"),
@@ -908,9 +1046,11 @@ def build_weekly_plan_keyboard(language: str = "en") -> InlineKeyboardMarkup:
          InlineKeyboardButton("📆 Sat", callback_data="day_sat"),
          InlineKeyboardButton("📆 Sun", callback_data="day_sun"),
          InlineKeyboardButton("📋 Full week", callback_data="fullweek")],
+        [InlineKeyboardButton("📊 Nutrition", callback_data="nutrition"),
+         InlineKeyboardButton("🌐 EN/ES", callback_data="lang:en"),
+         InlineKeyboardButton("💾 Save plan", callback_data="saveplan")],
     ]
-    tip_row = [[InlineKeyboardButton("💾 Save plan", callback_data="saveplan")]]
-    return InlineKeyboardMarkup(rows + tip_row)
+    return InlineKeyboardMarkup(rows)
 
 
 def render_weekly_plan(
@@ -1150,11 +1290,22 @@ def init_db() -> None:
                 allergen TEXT NOT NULL,
                 introduced_at TEXT NOT NULL,
                 reactions TEXT,
+                severity TEXT,
+                outcome TEXT,
                 FOREIGN KEY (telegram_user_id) REFERENCES users(telegram_user_id),
                 UNIQUE(telegram_user_id, allergen)
             )
             """
         )
+        # Add severity and outcome columns if they don't exist (safe migration)
+        try:
+            conn.execute("ALTER TABLE allergen_intros ADD COLUMN severity TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            conn.execute("ALTER TABLE allergen_intros ADD COLUMN outcome TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         # Add introduced_allergens column if it doesn't exist (safe migration)
         try:
             conn.execute("ALTER TABLE profiles ADD COLUMN introduced_allergens TEXT NOT NULL DEFAULT ''")
@@ -1281,7 +1432,30 @@ def get_introduced_allergens(telegram_user_id: int) -> List[str]:
         return [str(r["allergen"]).lower() for r in rows]
 
 
-def introduce_allergen(telegram_user_id: int, allergen: str, reactions: Optional[str] = None) -> bool:
+def update_allergen_intro(telegram_user_id: int, allergen: str, reactions: Optional[str] = None, severity: Optional[str] = None, outcome: Optional[str] = None) -> None:
+    """Update an existing allergen intro record's fields."""
+    with _db_conn() as conn:
+        updates = []
+        params = []
+        if reactions is not None:
+            updates.append("reactions = ?")
+            params.append(reactions)
+        if severity is not None:
+            updates.append("severity = ?")
+            params.append(severity)
+        if outcome is not None:
+            updates.append("outcome = ?")
+            params.append(outcome)
+        if updates:
+            params.append(telegram_user_id)
+            params.append(allergen.lower().strip())
+            conn.execute(
+                f"UPDATE allergen_intros SET {', '.join(updates)} WHERE telegram_user_id = ? AND allergen = ?",
+                params,
+            )
+
+
+def introduce_allergen(telegram_user_id: int, allergen: str, reactions: Optional[str] = None, severity: Optional[str] = None, outcome: Optional[str] = None) -> bool:
     """Log a new allergen introduction. Returns True if new, False if already existed."""
     allergen_normalized = allergen.lower().strip()
     now = datetime.now(UTC).isoformat()
@@ -1289,10 +1463,10 @@ def introduce_allergen(telegram_user_id: int, allergen: str, reactions: Optional
         with _db_conn() as conn:
             conn.execute(
                 """
-                INSERT INTO allergen_intros (telegram_user_id, allergen, introduced_at, reactions)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO allergen_intros (telegram_user_id, allergen, introduced_at, reactions, severity, outcome)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (telegram_user_id, allergen_normalized, now, reactions),
+                (telegram_user_id, allergen_normalized, now, reactions, severity, outcome),
             )
         # Update profiles column too
         with _db_conn() as conn:
@@ -1317,7 +1491,7 @@ def get_allergen_journal(telegram_user_id: int) -> List[dict[str, Any]]:
     """Return all allergen introductions for this user."""
     with _db_conn() as conn:
         rows = conn.execute(
-            "SELECT allergen, introduced_at, reactions FROM allergen_intros WHERE telegram_user_id = ? ORDER BY introduced_at DESC",
+            "SELECT allergen, introduced_at, reactions, severity, outcome FROM allergen_intros WHERE telegram_user_id = ? ORDER BY introduced_at DESC",
             (telegram_user_id,),
         ).fetchall()
         return [dict(r) for r in rows]
@@ -2217,9 +2391,23 @@ async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             if day_key not in DAY_LABELS:
                 return
             detail = render_day_detail(plan_obj, day_key, language, profile)
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("\u2190 Back to week", callback_data="fullweek")]
-            ])
+            # Build rating + edit buttons for each meal slot in this day
+            keyboard_rows = []
+            day = plan_obj.get("days", {}).get(day_key, {})
+            for slot_key, slot_label in SLOT_LABELS.items():
+                meal = day.get(slot_key)
+                if not isinstance(meal, dict):
+                    continue
+                meal_id = f"{day_key}.{slot_key}"
+                row = [
+                    InlineKeyboardButton("👍", callback_data=f"rate:{meal_id}:up"),
+                    InlineKeyboardButton("👎", callback_data=f"rate:{meal_id}:down"),
+                    InlineKeyboardButton("⭐", callback_data=f"rate:{meal_id}:skip"),
+                    InlineKeyboardButton("✏️ Edit", callback_data=f"edit:{day_key}:{slot_key}"),
+                ]
+                keyboard_rows.append(row)
+            keyboard_rows.append([InlineKeyboardButton("\u2190 Back to week", callback_data="fullweek")])
+            keyboard = InlineKeyboardMarkup(keyboard_rows)
             try:
                 await query.edit_message_text(detail, reply_markup=keyboard, parse_mode=None)
             except Exception as e:
@@ -2525,6 +2713,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     if action == "allergen_journal":
         await allergen_journal_command(update, context)
+        return
+    if action == "toggle_lang":
+        # Toggle language
+        new_lang = "es" if language == "en" else "en"
+        with _db_conn() as conn:
+            conn.execute("UPDATE users SET preferred_language = ? WHERE telegram_user_id = ?", (new_lang, user.id))
+        msg = "Language set to English." if new_lang == "en" else "Idioma configurado a Español."
+        await update.message.reply_text(msg, reply_markup=main_menu_markup())
+        return
+    if action == "profile":
+        await profile_command(update, context)
         return
     urls = URL_RE.findall(text)
     profile = get_profile(user.id)
@@ -2965,9 +3164,13 @@ async def allergen_journal_command(update: Update, context: ContextTypes.DEFAULT
         for entry in entries:
             date_str = humanize_timestamp(entry.get("introduced_at", ""))
             allergen = str(entry.get("allergen", "")).capitalize()
+            sev = entry.get("severity") or ""
+            out = entry.get("outcome") or ""
             reactions = entry.get("reactions")
-            rx_note = f" — Reactions: {reactions}" if reactions else ""
-            lines.append(f"• {allergen} ({date_str}){rx_note}")
+            indicator = severity_indicator(sev, out, language)
+            sev_label = f" ({sev})" if sev and sev != "unknown" else ""
+            rx_note = f" — {reactions}" if reactions else ""
+            lines.append(f"• {indicator} {allergen}{sev_label} ({date_str}){rx_note}")
         lines.append("")
     else:
         no_intro = "No allergens introduced yet." if language == "en" else "Aún no se han introducido alérgenos."
@@ -2980,7 +3183,10 @@ async def allergen_journal_command(update: Update, context: ContextTypes.DEFAULT
     hint = '\nLog with: /introduce <allergen>' if language == "en" else '\nRegistra con: /introduce <alérgeno>'
     lines.append(hint)
 
-    await update.message.reply_text("\n".join(lines).strip(), reply_markup=main_menu_markup())
+    await update.message.reply_text(
+        "\n".join(lines).strip(),
+        reply_markup=build_allergen_journal_keyboard(language),
+    )
 
 
 async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3009,7 +3215,19 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     allergen = args[0].strip().lower()
-    reactions = " ".join(args[1:]).strip() if len(args) > 1 else None
+    remaining = args[1:]
+    # Try to parse severity and outcome from remaining args
+    severity = None
+    outcome = None
+    reactions = None
+    for arg in remaining:
+        arg_lower = arg.lower()
+        if arg_lower in ("mild", "moderate", "severe"):
+            severity = arg_lower
+        elif arg_lower in ("tolerated", "reaction", "unknown"):
+            outcome = arg_lower
+        elif arg_lower in ("up", "down", "skip", "ok", "fine", "good", "bad", "rash", "hives", "vomit"):
+            reactions = " ".join(remaining).strip()
 
     # Validate against track list
     if allergen not in ALLERGEN_TRACK_LIST:
@@ -3019,7 +3237,9 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text(invalid, reply_markup=main_menu_markup())
         return
 
-    was_new = introduce_allergen(user.id, allergen, reactions)
+    was_new = introduce_allergen(user.id, allergen, reactions=reactions, severity=severity, outcome=outcome)
+    if not was_new:
+        update_allergen_intro(user.id, allergen, reactions=reactions, severity=severity, outcome=outcome)
     allergen_cap = allergen.capitalize()
     now_str = datetime.now(UTC).strftime("%b %d")
 
@@ -3039,7 +3259,321 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await update.message.reply_text(msg + note if was_new else msg, reply_markup=main_menu_markup())
 
 
-async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+# --- Conversation states for /introduce flow ---
+INTRODUCE_ALLERGEN, INTRODUCE_SEVERITY, INTRODUCE_OUTCOME = range(100, 103)
+
+
+async def introduce_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the /introduce conversation: ask for allergen."""
+    if not update.message:
+        return ConversationHandler.END
+    user = update.effective_user
+    if not user:
+        return ConversationHandler.END
+    upsert_user(user.id, user.language_code)
+    language = get_user_language(user.id, user.language_code or "en")
+    profile = get_profile(user.id)
+    if not profile:
+        error_msg = "Please run /start first so I can save your baby's profile."
+        if language == "es":
+            error_msg = "Por favor usa /start primero para guardar tu perfil."
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+        return ConversationHandler.END
+
+    args = context.args or []
+    if not args:
+        prompt = "Which allergen are you introducing? (e.g., egg, peanut, milk)"
+        if language == "es":
+            prompt = "¿Qué alérgeno estás introduciendo? (ej., huevo, maní, leche)"
+        await update.message.reply_text(prompt, reply_markup=main_menu_markup())
+        return INTRODUCE_ALLERGEN
+
+    # Allergen provided directly
+    allergen = args[0].strip().lower()
+    if allergen not in ALLERGEN_TRACK_LIST:
+        invalid = f"'{allergen}' is not in the tracking list. Trackable: {', '.join(ALLERGEN_TRACK_LIST)}"
+        if language == "es":
+            invalid = f"'{allergen}' no está en la lista. Rastreables: {', '.join(ALLERGEN_TRACK_LIST)}"
+        await update.message.reply_text(invalid, reply_markup=main_menu_markup())
+        return ConversationHandler.END
+
+    context.user_data["pending_allergen"] = allergen
+    context.user_data["pending_allergen_lang"] = language
+
+    prompt = (
+        f"Logging: **{allergen.capitalize()}**\n\n"
+        "How did it go? Tap a button below:"
+    )
+    if language == "es":
+        prompt = (
+            f"Registrando: **{allergen.capitalize()}**\n\n"
+            "¿Cómo fue? Toca un botón abajo:"
+        )
+    await update.message.reply_text(prompt, reply_markup=build_severity_keyboard(), parse_mode="Markdown")
+    return INTRODUCE_SEVERITY
+
+
+async def introduce_severity(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle severity selection."""
+    query = update.callback_query
+    if not query:
+        return ConversationHandler.END
+    await query.answer()
+    user = query.from_user
+    if not user:
+        return ConversationHandler.END
+    language = get_user_language(user.id, user.language_code or "en")
+
+    data = query.data or ""
+    if data.startswith("intro_outcome:"):
+        # User tapped "Tolerated" directly → save immediately
+        outcome = data.split(":", 1)[1]
+        severity = "unknown"
+        allergen = context.user_data.get("pending_allergen", "")
+        if allergen:
+            introduce_allergen(user.id, allergen, severity=severity, outcome=outcome)
+            update_allergen_intro(user.id, allergen, severity=severity, outcome=outcome)
+            allergen_cap = allergen.capitalize()
+            msg = f"✅ {allergen_cap} logged as tolerated!"
+            if language == "es":
+                msg = f"✅ {allergen_cap} registrado como tolerado."
+            await query.edit_message_text(msg, reply_markup=None)
+        return ConversationHandler.END
+
+    if not data.startswith("intro_severity:"):
+        return INTRODUCE_SEVERITY
+
+    severity = data.split(":", 1)[1]
+    allergen = context.user_data.get("pending_allergen", "")
+    if not allergen:
+        await query.answer("Session expired. Please run /introduce again.", show_alert=True)
+        return ConversationHandler.END
+
+    context.user_data["pending_severity"] = severity
+
+    # Ask outcome
+    prompt = f"Severity: **{severity}**\n\nWhat was the outcome?"
+    if language == "es":
+        prompt = f"Severidad: **{severity}**\n\n¿Cuál fue el resultado?"
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Tolerated", callback_data="intro_outcome_save:tolerated")],
+        [InlineKeyboardButton("🚨 Reaction", callback_data="intro_outcome_save:reaction")],
+        [InlineKeyboardButton("❓ Unknown", callback_data="intro_outcome_save:unknown")],
+        [InlineKeyboardButton("« Back", callback_data="intro_back")],
+    ])
+    await query.edit_message_text(prompt, reply_markup=keyboard, parse_mode="Markdown")
+    return INTRODUCE_OUTCOME
+
+
+async def introduce_outcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle outcome selection."""
+    query = update.callback_query
+    if not query:
+        return ConversationHandler.END
+    await query.answer()
+    user = query.from_user
+    if not user:
+        return ConversationHandler.END
+    language = get_user_language(user.id, user.language_code or "en")
+
+    data = query.data or ""
+    if data == "intro_back":
+        allergen = context.user_data.get("pending_allergen", "")
+        context.user_data.pop("pending_severity", None)
+        prompt = f"Logging: **{allergen.capitalize()}**\n\nHow did it go? Tap a button below:"
+        if language == "es":
+            prompt = f"Registrando: **{allergen.capitalize()}**\n\n¿Cómo fue? Toca un botón abajo:"
+        await query.edit_message_text(prompt, reply_markup=build_severity_keyboard(), parse_mode="Markdown")
+        return INTRODUCE_SEVERITY
+
+    if not data.startswith("intro_outcome_save:"):
+        return INTRODUCE_OUTCOME
+
+    outcome = data.split(":", 1)[1]
+    severity = context.user_data.get("pending_severity", "unknown")
+    allergen = context.user_data.get("pending_allergen", "")
+
+    if allergen:
+        introduce_allergen(user.id, allergen, severity=severity, outcome=outcome)
+        update_allergen_intro(user.id, allergen, severity=severity, outcome=outcome)
+        allergen_cap = allergen.capitalize()
+        outcome_label = outcome.capitalize()
+        severity_label = severity if severity != "unknown" else ""
+        msg = f"✅ {allergen_cap} logged — {outcome_label}{(' (' + severity_label + ')') if severity_label else ''}!"
+        if language == "es":
+            msg = f"✅ {allergen_cap} registrado — {outcome_label}{(' (' + severity_label + ')') if severity_label else ''}."
+        await query.edit_message_text(msg, reply_markup=None)
+        # Clear pending
+        context.user_data.pop("pending_allergen", None)
+        context.user_data.pop("pending_severity", None)
+    return ConversationHandler.END
+
+
+async def introduce_text_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle free-text severity/outcome in /introduce conversation."""
+    text = (update.message.text or "").strip().lower()
+    user = update.effective_user
+    if not user:
+        return ConversationHandler.END
+    language = get_user_language(user.id, user.language_code or "en")
+
+    # Determine if this looks like severity or outcome
+    outcome_map = {"tolerated": "tolerated", "reaction": "reaction", "unknown": "unknown", "ok": "tolerated", "fine": "tolerated", "good": "tolerated"}
+    severity_map = {"mild": "mild", "moderate": "moderate", "severe": "severe", "bad": "severe"}
+    outcome = outcome_map.get(text)
+    severity = severity_map.get(text)
+
+    allergen = context.user_data.get("pending_allergen", "")
+
+    if not allergen:
+        await update.message.reply_text("Please start with /introduce <allergen>.", reply_markup=main_menu_markup())
+        return ConversationHandler.END
+
+    if outcome or severity:
+        if outcome and not severity:
+            introduce_allergen(user.id, allergen, severity="unknown", outcome=outcome)
+            update_allergen_intro(user.id, allergen, severity="unknown", outcome=outcome)
+        elif severity and not outcome:
+            introduce_allergen(user.id, allergen, severity=severity, outcome="unknown")
+            update_allergen_intro(user.id, allergen, severity=severity, outcome="unknown")
+        else:
+            introduce_allergen(user.id, allergen, severity=severity, outcome=outcome)
+            update_allergen_intro(user.id, allergen, severity=severity, outcome=outcome)
+        allergen_cap = allergen.capitalize()
+        msg = f"✅ {allergen_cap} logged — {severity or '?'} / {outcome or '?'}!"
+        if language == "es":
+            msg = f"✅ {allergen_cap} registrado — {severity or '?'} / {outcome or '?'}."
+        await update.message.reply_text(msg, reply_markup=main_menu_markup())
+        context.user_data.pop("pending_allergen", None)
+        context.user_data.pop("pending_severity", None)
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        "I didn't understand that. Use /cancel to start over.",
+        reply_markup=main_menu_markup(),
+    )
+    return INTRODUCE_SEVERITY
+
+
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Cancel any ongoing conversation."""
+    if not update.message:
+        return
+    user = update.effective_user
+    if not user:
+        return
+    upsert_user(user.id, user.language_code)
+    language = get_user_language(user.id, user.language_code or "en")
+    # Clear all pending states
+    for key in list(context.user_data.keys()):
+        context.user_data[key] = None
+    msg = "Cancelled. What would you like to do?"
+    if language == "es":
+        msg = "Cancelado. ¿Qué te gustaría hacer?"
+    await update.message.reply_text(msg, reply_markup=main_menu_markup())
+
+
+async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show a summary of baby's current profile and stats."""
+    if not update.message:
+        return
+    user = update.effective_user
+    if not user:
+        return
+    upsert_user(user.id, user.language_code)
+    language = get_user_language(user.id, user.language_code or "en")
+    profile = get_profile(user.id)
+
+    lines = ["👶 Baby Profile", "━━━━━━━━━━━━━━━━━━━━", ""]
+
+    if not profile:
+        lines.append("No profile set. Run /start to create one.")
+    else:
+        age = profile.get("age_months", 12)
+        allergies = profile.get("allergies", "none")
+        blw = int(float(profile.get("blw_ratio", 0.4)) * 100)
+        spoon = int(float(profile.get("spoon_ratio", 0.6)) * 100)
+        introduced = get_introduced_allergens(user.id)
+        journal = get_allergen_journal(user.id)
+
+        lines.append(f"🍼 Age: {age} months")
+        lines.append(f"⚠️ Allergies: {allergies}")
+        lines.append(f"🍽️ Feeding style: {blw}% BLW / {spoon}% spoon-fed")
+        lines.append(f"🥜 Introduced allergens: {len(introduced)}")
+        if introduced:
+            intro_list = ", ".join(a.capitalize() for a in introduced[:8])
+            lines.append(f"   {intro_list}")
+        lines.append(f"📖 Allergen journal entries: {len(journal)}")
+
+    # Rating stats
+    week_start = week_start_for_plans(date.today())
+    stats = get_meal_rating_stats(user.id, week_start)
+    total_rated = stats.get("total_meals", 0) if stats else 0
+    lines.append(f"⭐ Meals rated: {total_rated}")
+
+    # Inspiration count
+    with _db_conn() as conn:
+        insp_count = conn.execute(
+            "SELECT COUNT(*) as c FROM inspirations WHERE telegram_user_id = ?",
+            (user.id,),
+        ).fetchone()["c"]
+        plan_count = conn.execute(
+            "SELECT COUNT(*) as c FROM weekly_plans WHERE telegram_user_id = ?",
+            (user.id,),
+        ).fetchone()["c"]
+    lines.append(f"💡 Inspirations saved: {insp_count}")
+    lines.append(f"📅 Weekly plans created: {plan_count}")
+
+    footer = "\nUse the menu buttons or type a command to continue."
+    if language == "es":
+        footer = "\nUsa los botones del menú o escribe un comando para continuar."
+    lines.append(footer)
+
+    await update.message.reply_text("\n".join(lines), reply_markup=main_menu_markup())
+
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show bot usage statistics."""
+    if not update.message:
+        return
+    user = update.effective_user
+    if not user:
+        return
+    upsert_user(user.id, user.language_code)
+    language = get_user_language(user.id, user.language_code or "en")
+
+    with _db_conn() as conn:
+        insp_count = conn.execute("SELECT COUNT(*) as c FROM inspirations WHERE telegram_user_id = ?", (user.id,)).fetchone()["c"]
+        plan_count = conn.execute("SELECT COUNT(*) as c FROM weekly_plans WHERE telegram_user_id = ?", (user.id,)).fetchone()["c"]
+        feedback_count = conn.execute("SELECT COUNT(*) as c FROM feedback WHERE telegram_user_id = ?", (user.id,)).fetchone()["c"]
+        allergen_count = conn.execute("SELECT COUNT(*) as c FROM allergen_intros WHERE telegram_user_id = ?", (user.id,)).fetchone()["c"]
+
+    week_start = week_start_for_plans(date.today())
+    stats = get_meal_rating_stats(user.id, week_start)
+    avg = stats.get("avg_rating", 0) if stats else 0
+
+    header = "📊 Your Stats" if language == "en" else "📊 Tus Estadísticas"
+    lines = [
+        header,
+        "━━━━━━━━━━━━━━━━━━━━",
+        "",
+        f"💡 Inspirations saved: {insp_count}",
+        f"📅 Meals planned: {plan_count * 35}",  # 5 slots × 7 days
+        f"⭐ Meals rated: {feedback_count}",
+        f"🥜 Allergens introduced: {allergen_count}",
+        "",
+    ]
+    if avg > 0:
+        lines.append(f"📈 Average rating: {avg:.2f} ⭐")
+    elif avg < 0:
+        lines.append(f"📉 Average rating: {abs(avg):.2f} 👎")
+
+    lines.append("")
+    lines.append("Keep using the bot to improve your meal plans! 💪")
+    if language == "es":
+        lines[-1] = "¡Sigue usando el bot para mejorar tus planes de comidas! 💪"
+
+    await update.message.reply_text("\n".join(lines), reply_markup=main_menu_markup())
     if not update.message:
         return
     user = update.effective_user
@@ -3382,11 +3916,359 @@ async def handle_regen_callback(update: Update, context: ContextTypes.DEFAULT_TY
     # regen_accept — save the new meal
     await query.edit_message_reply_markup(reply_markup=None)
     upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
+    profile = get_profile(user.id)
     await _send_chunked(
         query.message.chat,
         f"✅ Accepted! {day_key.title()} {slot_key} updated.\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
         reply_markup=main_menu_markup(),
     )
+
+
+async def handle_rate_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle inline rating buttons on meal cards: rate:day:slot:direction."""
+    query = update.callback_query
+    if not query:
+        return
+    user = query.from_user
+    if not user:
+        return
+
+    data = query.data or ""
+    if not data.startswith("rate:"):
+        return
+    parts = data.split(":")
+    if len(parts) < 4:
+        return
+
+    _prefix, day_key, slot_key, direction = parts[0], parts[1], parts[2], parts[3]
+    meal_id = f"{day_key}.{slot_key}"
+
+    # Map direction to rating
+    rating_map = {"up": 1, "down": -1, "skip": 0}
+    rating = rating_map.get(direction, 0)
+
+    language = get_user_language(user.id, user.language_code or "en")
+    profile = get_profile(user.id)
+
+    # Get weekly plan
+    week_start = week_start_for_plans(date.today())
+    existing = get_weekly_plan(user.id, week_start=week_start)
+    if not existing:
+        await query.answer("No plan found.", show_alert=True)
+        return
+
+    try:
+        plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
+    except Exception:
+        await query.answer("Couldn't read plan.", show_alert=True)
+        return
+
+    # Save feedback
+    weekly_plan_id = int(existing["id"])
+    now = datetime.now(UTC).isoformat()
+    with _db_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO feedback (telegram_user_id, weekly_plan_id, meal_id, rating, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (user.id, weekly_plan_id, meal_id, rating, now),
+        )
+
+    # Show confirmation toast
+    toast = "👍 Saved!" if direction == "up" else ("👎 Noted" if direction == "down" else "⭐ Skip recorded")
+    if language == "es":
+        toast = "👍 ¡Guardado!" if direction == "up" else ("👎 Recibido" if direction == "down" else "⭐ Omitido")
+    await query.answer(toast, show_alert=False)
+
+    # Refresh the day detail view
+    detail = render_day_detail(plan_obj, day_key, language, profile)
+    keyboard_rows = []
+    day = plan_obj.get("days", {}).get(day_key, {})
+    for s_key, slot_label in SLOT_LABELS.items():
+        meal = day.get(s_key)
+        if not isinstance(meal, dict):
+            continue
+        m_id = f"{day_key}.{s_key}"
+        row = [
+            InlineKeyboardButton("👍", callback_data=f"rate:{m_id}:up"),
+            InlineKeyboardButton("👎", callback_data=f"rate:{m_id}:down"),
+            InlineKeyboardButton("⭐", callback_data=f"rate:{m_id}:skip"),
+            InlineKeyboardButton("✏️ Edit", callback_data=f"edit:{day_key}:{s_key}"),
+        ]
+        keyboard_rows.append(row)
+    keyboard_rows.append([InlineKeyboardButton("\u2190 Back to week", callback_data="fullweek")])
+    keyboard = InlineKeyboardMarkup(keyboard_rows)
+    try:
+        await query.edit_message_text(detail, reply_markup=keyboard, parse_mode=None)
+    except Exception:
+        pass
+
+
+async def handle_edit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Edit ✏️ button on meal cards: edit:day:slot → show mini-menu."""
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user = query.from_user
+    if not user:
+        return
+
+    data = query.data or ""
+    if not data.startswith("edit:"):
+        return
+    parts = data.split(":")
+    if len(parts) < 3:
+        return
+
+    day_key, slot_key = parts[1], parts[2]
+    day_label = DAY_LABELS.get(day_key, day_key.title())
+    slot_label = SLOT_LABELS.get(slot_key, slot_key)
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔄 Regenerate", callback_data=f"regen_slot:{day_key}:{slot_key}"),
+            InlineKeyboardButton("🗑️ Clear", callback_data=f"clear_slot:{day_key}:{slot_key}"),
+        ],
+        [InlineKeyboardButton("« Back", callback_data=f"day_{day_key}")],
+    ])
+    try:
+        await query.edit_message_text(
+            f"✏️ Edit {day_label} {slot_label}:\n\nChoose an action:",
+            reply_markup=keyboard,
+        )
+    except Exception:
+        pass
+
+
+async def handle_nutrition_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle 📊 Nutrition button on weekly plan."""
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user = query.from_user
+    if not user:
+        return
+
+    language = get_user_language(user.id, user.language_code or "en")
+    profile = get_profile(user.id)
+
+    week_start = week_start_for_plans(date.today())
+    existing = get_weekly_plan(user.id, week_start=week_start)
+    if not existing:
+        await query.answer("No plan found.", show_alert=True)
+        return
+
+    try:
+        plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
+    except Exception:
+        await query.answer("Couldn't read plan.", show_alert=True)
+        return
+
+    age_months = int(profile.get("age_months", 12)) if profile else 12
+    summary = generate_nutrition_summary(plan_obj, age_months, language)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("\u2190 Back to week", callback_data="fullweek")],
+    ])
+    try:
+        await query.edit_message_text(summary, reply_markup=keyboard, parse_mode=None)
+    except Exception:
+        pass
+
+
+async def handle_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle language toggle: lang:en / lang:es."""
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user = query.from_user
+    if not user:
+        return
+
+    data = query.data or ""
+    if not data.startswith("lang:"):
+        return
+    new_lang = data.split(":", 1)[1]
+    if new_lang not in ("en", "es"):
+        return
+
+    with _db_conn() as conn:
+        conn.execute(
+            "UPDATE users SET preferred_language = ? WHERE telegram_user_id = ?",
+            (new_lang, user.id),
+        )
+    msg = "Language set to English." if new_lang == "en" else "Idioma configurado a Español."
+    await query.answer(msg, show_alert=True)
+
+
+async def handle_allergen_journal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle quick-add allergen buttons in the journal view."""
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user = query.from_user
+    if not user:
+        return
+
+    language = get_user_language(user.id, user.language_code or "en")
+    data = query.data or ""
+
+    if data == "aj_new":
+        prompt = "Which allergen would you like to log? (e.g., egg, peanut, milk)"
+        if language == "es":
+            prompt = "¿Qué alérgeno te gustaría registrar? (ej., huevo, maní, leche)"
+        await query.edit_message_text(
+            f"🥜 {prompt}\n\nOr use /introduce <alérgeno>",
+            reply_markup=build_allergen_journal_keyboard(language),
+        )
+        return
+
+    if data.startswith("aj_quick:"):
+        allergen = data.split(":", 1)[1]
+        if allergen not in ALLERGEN_TRACK_LIST:
+            await query.answer(f"'{allergen}' not in trackable list.", show_alert=True)
+            return
+        introduce_allergen(user.id, allergen)
+        update_allergen_intro(user.id, allergen, severity="unknown", outcome="unknown")
+        allergen_cap = allergen.capitalize()
+        msg = f"✅ {allergen_cap} quick-logged!"
+        if language == "es":
+            msg = f"✅ {allergen_cap} registrado rápidamente."
+        await query.answer(msg, show_alert=True)
+        # Refresh journal
+        profile = get_profile(user.id)
+        entries = get_allergen_journal(user.id)
+        introduced = get_introduced_allergens(user.id)
+        header = "🥜 Allergen Journal" if language == "en" else "🥜 Registro de Alérgenos"
+        known_allergens = profile.get("allergies", "") if profile else ""
+        known_list = [a.strip().lower() for a in known_allergens.split(",") if a.strip() and a.strip() != "none"]
+        lines = [header, "━━━━━━━━━━━━━━━━━━━━", ""]
+        if known_list:
+            lines.append(f"⚠️ Known allergies: {', '.join(known_list)}")
+            lines.append("")
+        if introduced:
+            lines.append("✅ Introduced allergens:")
+            for entry in entries:
+                date_str = humanize_timestamp(entry.get("introduced_at", ""))
+                a = str(entry.get("allergen", "")).capitalize()
+                sev = entry.get("severity") or ""
+                out = entry.get("outcome") or ""
+                indicator = severity_indicator(sev, out, language)
+                rx = entry.get("reactions") or ""
+                rx_note = f" ({rx})" if rx else ""
+                lines.append(f"• {indicator} {a} ({date_str}){rx_note}")
+            lines.append("")
+        else:
+            no_intro = "No allergens introduced yet." if language == "en" else "Aún no se han introducido alérgenos."
+            lines.append(no_intro)
+            lines.append("")
+        track_list = ", ".join(a.capitalize() for a in ALLERGEN_TRACK_LIST)
+        track_note = f"Trackable: {track_list}" if language == "en" else f"Seguibles: {track_list}"
+        lines.append(track_note)
+        hint = '\nLog with: /introduce <allergen>' if language == "en" else '\nRegistra con: /introduce <alérgeno>'
+        lines.append(hint)
+        try:
+            await query.edit_message_text("\n".join(lines).strip(), reply_markup=build_allergen_journal_keyboard(language), parse_mode=None)
+        except Exception:
+            pass
+
+
+async def handle_slot_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle regen_slot and clear_slot actions from the edit mini-menu."""
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    user = query.from_user
+    if not user:
+        return
+
+    language = get_user_language(user.id, user.language_code or "en")
+    profile = get_profile(user.id)
+    data = query.data or ""
+
+    if not (data.startswith("regen_slot:") or data.startswith("clear_slot:")):
+        return
+
+    parts = data.split(":")
+    if len(parts) < 3:
+        return
+
+    action_type = parts[0]  # "regen_slot" or "clear_slot"
+    day_key, slot_key = parts[1], parts[2]
+    day_label = DAY_LABELS.get(day_key, day_key.title())
+    slot_label = SLOT_LABELS.get(slot_key, slot_key)
+
+    week_start = week_start_for_plans(date.today())
+    existing = get_weekly_plan(user.id, week_start=week_start)
+    if not existing:
+        await query.answer("No plan found.", show_alert=True)
+        return
+
+    try:
+        plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
+    except Exception:
+        await query.answer("Couldn't read plan.", show_alert=True)
+        return
+
+    if action_type == "clear_slot":
+        # Remove the meal from this slot
+        days = plan_obj.get("days", {})
+        if day_key in days and slot_key in days[day_key]:
+            del days[day_key][slot_key]
+        upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
+        msg = f"🗑️ Cleared {day_label} {slot_label}."
+        if language == "es":
+            msg = f"🗑️ Eliminado {day_label} {slot_label}."
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("\u2190 Back to week", callback_data="fullweek")],
+        ])
+        try:
+            await query.edit_message_text(msg, reply_markup=keyboard)
+        except Exception:
+            pass
+        return
+
+    # regen_slot — regenerate the meal
+    await query.edit_message_reply_markup(reply_markup=None)
+    await context.bot.send_chat_action(query.message.chat_id, "typing")
+
+    inspiration = get_latest_inspiration(user.id)
+    if inspiration:
+        inspiration_summary = str(inspiration.get("summary") or "")
+        adaptation = get_adaptation_by_index(inspiration, 1)
+    else:
+        inspiration_summary = "A simple nutritious baby meal"
+        adaptation = ""
+
+    normalized_meal = await _safety_checked_generate_meal(
+        profile=profile,
+        inspiration_summary=inspiration_summary,
+        selected_adaptation=adaptation,
+        day_key=day_key,
+        slot_key=slot_key,
+        language=language,
+        telegram_user_id=user.id,
+    )
+
+    plan_obj.setdefault("days", {}).setdefault(day_key, {})[slot_key] = normalized_meal
+    upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
+
+    new_text = f"🔄 New suggestion for {day_label} {slot_label}:\n\n{render_meal_card(normalized_meal, slot_key, language)}"
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Accept", callback_data=f"regen_accept:{day_key}:{slot_key}"),
+            InlineKeyboardButton("↩️ Revert", callback_data=f"regen_revert:{day_key}:{slot_key}"),
+        ]
+    ])
+    try:
+        await query.edit_message_text(new_text, reply_markup=keyboard)
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -3402,7 +4284,7 @@ def main() -> None:
             ONBOARDING_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, onboarding_age)],
             ONBOARDING_ALLERGIES: [MessageHandler(filters.TEXT & ~filters.COMMAND, onboarding_allergies)],
         },
-        fallbacks=[CommandHandler("help", help_command)],
+        fallbacks=[CommandHandler("help", help_command), CommandHandler("cancel", cancel_command)],
     )
 
     application.add_handler(onboarding)
@@ -3417,11 +4299,32 @@ def main() -> None:
     application.add_handler(CommandHandler("rate", rate_command))
     application.add_handler(CommandHandler("regenerate", regenerate_command))
     application.add_handler(CommandHandler("introduce", introduce_command))
+    application.add_handler(CommandHandler("profile", profile_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("cancel", cancel_command))
+
+    # /introduce conversation handler with severity/outcome prompting
+    introduce_conv = ConversationHandler(
+        entry_points=[CommandHandler("introduce", introduce_start)],
+        states={
+            INTRODUCE_ALLERGEN: [MessageHandler(filters.TEXT & ~filters.COMMAND, introduce_text_fallback)],
+            INTRODUCE_SEVERITY: [CallbackQueryHandler(introduce_severity, pattern=r"^intro_")],
+            INTRODUCE_OUTCOME: [CallbackQueryHandler(introduce_outcome, pattern=r"^intro_")],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_command)],
+    )
+    application.add_handler(introduce_conv)
 
     # Inline keyboard callback handlers (must be added before generic text handler)
     application.add_handler(CallbackQueryHandler(handle_apply_callback, pattern=r"^(opt|selday|apply|back):"))
     application.add_handler(CallbackQueryHandler(handle_plan_callback, pattern=r"^(day_|fullweek|saveplan)$"))
     application.add_handler(CallbackQueryHandler(handle_regen_callback, pattern=r"^regen_"))
+    application.add_handler(CallbackQueryHandler(handle_rate_callback, pattern=r"^rate:"))
+    application.add_handler(CallbackQueryHandler(handle_edit_callback, pattern=r"^edit:"))
+    application.add_handler(CallbackQueryHandler(handle_slot_action_callback, pattern=r"^(regen_slot|clear_slot):"))
+    application.add_handler(CallbackQueryHandler(handle_nutrition_callback, pattern=r"^nutrition$"))
+    application.add_handler(CallbackQueryHandler(handle_lang_callback, pattern=r"^lang:"))
+    application.add_handler(CallbackQueryHandler(handle_allergen_journal_callback, pattern=r"^aj_"))
 
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

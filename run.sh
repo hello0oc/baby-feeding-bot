@@ -6,7 +6,7 @@ echo "Starting Baby Feeding Bot..."
 if [ ! -f .env ]; then
     echo "WARNING: .env file not found. Make sure environment variables are set:"
     echo "  - BABY_FEEDING_BOT_TOKEN"
-    echo "  - GEMINI_API_KEY"
+    echo "  - MINIMAX_API_KEY"
     echo ""
 fi
 
