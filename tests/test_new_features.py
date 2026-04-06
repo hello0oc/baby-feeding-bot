@@ -172,7 +172,11 @@ class WeeklyPlanKeyboardTests(unittest.TestCase):
     def test_build_weekly_plan_keyboard_has_lang_toggle(self):
         kb = bot.build_weekly_plan_keyboard()
         buttons = [b.text for row in kb.inline_keyboard for b in row]
-        self.assertIn("🌐 EN/ES", buttons)
+        # All four language options are now individual buttons
+        self.assertIn("🌐 EN", buttons)
+        self.assertIn("ES", buttons)
+        self.assertIn("DE", buttons)
+        self.assertIn("ZH", buttons)
 
     def test_build_weekly_plan_keyboard_nutrition_callback(self):
         kb = bot.build_weekly_plan_keyboard()
@@ -182,7 +186,10 @@ class WeeklyPlanKeyboardTests(unittest.TestCase):
     def test_build_weekly_plan_keyboard_lang_callback(self):
         kb = bot.build_weekly_plan_keyboard()
         callback_map = {b.text: b.callback_data for row in kb.inline_keyboard for b in row}
-        self.assertEqual(callback_map["🌐 EN/ES"], "lang:en")
+        self.assertEqual(callback_map["🌐 EN"], "lang:en")
+        self.assertEqual(callback_map["ES"], "lang:es")
+        self.assertEqual(callback_map["DE"], "lang:de")
+        self.assertEqual(callback_map["ZH"], "lang:zh")
 
 
 class UpdateAllergenIntroTests(unittest.TestCase):

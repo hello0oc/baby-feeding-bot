@@ -195,7 +195,7 @@ MAIN_MENU_ROWS = [
     ["🛒 Shopping list", "📚 History"],
     ["👶 Update age", "🥜 Update allergies"],
     ["🥜 Allergen journal", "❓ Help"],
-    ["🌐 EN/ES", "👤 Profile"],
+    ["🌐 Lang", "👤 Profile"],
 ]
 MENU_TO_ACTION = {
     "📆 Today": "today",
@@ -1017,10 +1017,16 @@ def render_day_detail(
     profile: Optional[dict[str, Any]] = None,
 ) -> str:
     """Expanded view of a single day with condensed meal cards."""
-    day_label = DAY_LABELS.get(day_key, day_key.title())
+    day_label = _localized_day_label(day_key, language)
+    no_data_map = {
+        "en": f"No data for {day_label}.",
+        "es": f"Sin datos para {day_label}.",
+        "de": f"Keine Daten für {day_label}.",
+        "zh": f"{day_label} 无数据。",
+    }
     day = plan.get("days", {}).get(day_key)
     if not isinstance(day, dict):
-        return f"No data for {day_label}."
+        return no_data_map.get(language, no_data_map["en"])
 
     lines = [f"📆 {day_label}", "━━━━━━━━━━━━━━━━━━━━", ""]
     for slot_key, slot_label in SLOT_LABELS.items():
@@ -1035,22 +1041,132 @@ def render_day_detail(
     return "\n".join(lines).strip()
 
 
+def _day_buttons_for_language(language: str) -> List[InlineKeyboardButton]:
+    """Return the 7 day-name buttons localized to the current language."""
+    day_map = {
+        "en": [("day_mon", "Mon"), ("day_tue", "Tue"), ("day_wed", "Wed"),
+               ("day_thu", "Thu"), ("day_fri", "Fri"), ("day_sat", "Sat"), ("day_sun", "Sun")],
+        "es": [("day_mon", "Lun"), ("day_tue", "Mar"), ("day_wed", "Mié"),
+               ("day_thu", "Jue"), ("day_fri", "Vie"), ("day_sat", "Sáb"), ("day_sun", "Dom")],
+        "de": [("day_mon", "Mo"), ("day_tue", "Di"), ("day_wed", "Mi"),
+               ("day_thu", "Do"), ("day_fri", "Fr"), ("day_sat", "Sa"), ("day_sun", "So")],
+        "zh": [("day_mon", "周一"), ("day_tue", "周二"), ("day_wed", "周三"),
+               ("day_thu", "周四"), ("day_fri", "周五"), ("day_sat", "周六"), ("day_sun", "周日")],
+    }
+    rows = day_map.get(language, day_map["en"])
+    # Two rows: Mon–Thu and Fri–Sun
+    return [
+        InlineKeyboardButton(f"📆 {d[1]}", callback_data=d[0]) for d in rows[:4]
+    ], [
+        InlineKeyboardButton(f"📆 {d[1]}", callback_data=d[0]) for d in rows[4:]
+    ]
+
+
 def build_weekly_plan_keyboard(language: str = "en") -> InlineKeyboardMarkup:
     """Day picker for weekly plan — Mon, Tue, ... Sun + Full week + Nutrition."""
-    rows = [
-        [InlineKeyboardButton("📆 Mon", callback_data="day_mon"),
-         InlineKeyboardButton("📆 Tue", callback_data="day_tue"),
-         InlineKeyboardButton("📆 Wed", callback_data="day_wed"),
-         InlineKeyboardButton("📆 Thu", callback_data="day_thu")],
-        [InlineKeyboardButton("📆 Fri", callback_data="day_fri"),
-         InlineKeyboardButton("📆 Sat", callback_data="day_sat"),
-         InlineKeyboardButton("📆 Sun", callback_data="day_sun"),
-         InlineKeyboardButton("📋 Full week", callback_data="fullweek")],
-        [InlineKeyboardButton("📊 Nutrition", callback_data="nutrition"),
-         InlineKeyboardButton("🌐 EN/ES", callback_data="lang:en"),
-         InlineKeyboardButton("💾 Save plan", callback_data="saveplan")],
+    first_four, last_three = _day_buttons_for_language(language)
+    fullweek_labels = {"en": "📋 Full week", "es": "📋 Toda la semana", "de": "📋 Ganze Woche", "zh": "📋 完整周"}
+    nutrition_labels = {"en": "📊 Nutrition", "es": "📊 Nutrición", "de": "📊 Nährwerte", "zh": "📊 营养"}
+    save_labels = {"en": "💾 Save plan", "es": "💾 Guardar plan", "de": "💾 Speichern", "zh": "💾 保存计划"}
+
+    rows: List[List[InlineKeyboardButton]] = [
+        first_four,
+        last_three + [InlineKeyboardButton(fullweek_labels.get(language, fullweek_labels["en"]),
+                                           callback_data="fullweek")],
+        [InlineKeyboardButton(nutrition_labels.get(language, nutrition_labels["en"]),
+                               callback_data="nutrition"),
+         InlineKeyboardButton("🌐 EN", callback_data="lang:en"),
+         InlineKeyboardButton("ES", callback_data="lang:es"),
+         InlineKeyboardButton("DE", callback_data="lang:de"),
+         InlineKeyboardButton("ZH", callback_data="lang:zh")],
+        [InlineKeyboardButton(save_labels.get(language, save_labels["en"]),
+                              callback_data="saveplan")],
     ]
     return InlineKeyboardMarkup(rows)
+
+
+def _localized_day_label(day_key: str, language: str) -> str:
+    labels = {
+        "en": {"mon": "Mon", "tue": "Tue", "wed": "Wed", "thu": "Thu",
+               "fri": "Fri", "sat": "Sat", "sun": "Sun"},
+        "es": {"mon": "Lun", "tue": "Mar", "wed": "Mié", "thu": "Jue",
+               "fri": "Vie", "sat": "Sáb", "sun": "Dom"},
+        "de": {"mon": "Mo", "tue": "Di", "wed": "Mi", "thu": "Do",
+               "fri": "Fr", "sat": "Sa", "sun": "So"},
+        "zh": {"mon": "周一", "tue": "周二", "wed": "周三", "thu": "周四",
+               "fri": "周五", "sat": "周六", "sun": "周日"},
+    }
+    return labels.get(language, labels["en"]).get(day_key, day_key.upper())
+
+
+def _localized_slot_icon(slot_key: str, has_meal: bool) -> str:
+    """Return filled or outline emoji icon for a slot."""
+    icons = {
+        "breakfast": ("🌅", "🅾️"),
+        "snack1":     ("🍎", "🅾️"),
+        "lunch":      ("🥗", "🅾️"),
+        "snack2":     ("🧃", "🅾️"),
+        "dinner":     ("🍲", "🅾️"),
+    }
+    filled, empty = icons.get(slot_key, ("🍽️", "🅾️"))
+    return filled if has_meal else empty
+
+
+def render_weekly_plan_digest(
+    plan: dict[str, Any],
+    language: str = "en",
+    profile: Optional[dict[str, Any]] = None,
+) -> str:
+    """
+    Compact weekly digest — one line per day showing day name + meal slot icons.
+    Tap a day button below to expand. This is the 'full week' overview.
+    """
+    days = plan.get("days") or {}
+    if not days:
+        return "No meals planned yet." if language == "en" else "Aún no hay comidas planificadas."
+
+    lines: List[str] = []
+    no_plan = "No meals planned yet." if language == "en" else "Aún no hay comidas planificadas."
+
+    for day_key, day_label in DAY_LABELS.items():
+        day = days.get(day_key)
+        if not isinstance(day, dict):
+            # No data for this day at all
+            lines.append(f"📆 {day_label}  —  {no_plan}")
+            continue
+
+        # Build icon strip for this day
+        icon_strip = "".join(
+            _localized_slot_icon(slot_key, bool(day.get(slot_key)))
+            for slot_key in SLOT_LABELS
+        )
+
+        # Count filled vs total slots
+        filled = sum(1 for slot_key in SLOT_LABELS if day.get(slot_key))
+        total = len(SLOT_LABELS)
+
+        # Short summary of what's planned
+        planned: List[str] = []
+        for slot_key in SLOT_LABELS:
+            meal = day.get(slot_key)
+            if isinstance(meal, dict):
+                name = meal.get("name", "")
+                if name:
+                    # Truncate long names
+                    planned.append(name[:28])
+
+        if planned:
+            summary = " · ".join(planned[:3])
+            if len(planned) > 3:
+                summary += f" (+{len(planned) - 3} more)"
+        else:
+            summary = "—" if language == "en" else "—"
+
+        lines.append(
+            f"📆 {day_label}  {icon_strip}  {summary}"
+        )
+
+    return "\n".join(lines)
 
 
 def render_weekly_plan(
@@ -2406,7 +2522,9 @@ async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     InlineKeyboardButton("✏️ Edit", callback_data=f"edit:{day_key}:{slot_key}"),
                 ]
                 keyboard_rows.append(row)
-            keyboard_rows.append([InlineKeyboardButton("\u2190 Back to week", callback_data="fullweek")])
+            back_labels = {"en": "← Back to week", "es": "← Volver a la semana", "de": "← Zurück zur Woche", "zh": "← 返回周视图"}
+            keyboard_rows.append([InlineKeyboardButton(back_labels.get(language, back_labels["en"]),
+                                                        callback_data="fullweek")])
             keyboard = InlineKeyboardMarkup(keyboard_rows)
             try:
                 await query.edit_message_text(detail, reply_markup=keyboard, parse_mode=None)
@@ -2420,11 +2538,21 @@ async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         if data == "fullweek":
-            week_label = f"Week of {week_start.isoformat()}"
-            if language == "es":
-                week_label = f"Semana del {week_start.isoformat()}"
+            week_label_map = {
+                "en": f"Week of {week_start.isoformat()}",
+                "es": f"Semana del {week_start.isoformat()}",
+                "de": f"Woche vom {week_start.isoformat()}",
+                "zh": f"周 {week_start.isoformat()}",
+            }
+            week_label = week_label_map.get(language, week_label_map["en"])
+            tip_map = {
+                "en": "\n\n💡 Tap a day to expand →",
+                "es": "\n\n💡 Toca un día para expandir →",
+                "de": "\n\n💡 Tippe auf einen Tag zum Erweitern →",
+                "zh": "\n\n💡 点击日期展开详情 →",
+            }
+            tip = tip_map.get(language, tip_map["en"])
             digest = render_weekly_plan_digest(plan_obj, language)
-            tip = "\n\n\U0001f4a1 Tap a day to expand \u2192" if language == "en" else "\n\n\U0001f4a1 Toca un d\u00eda para expandir \u2192"
             try:
                 await query.edit_message_text(
                     f"\U0001f4c5 {week_label}{tip}\n\n{digest}",
@@ -3037,50 +3165,98 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     upsert_user(user.id, user.language_code)
     language = get_user_language(user.id, user.language_code or "en")
+
+    # Localized strings
+    err_no_profile = {
+        "en": "Please run /start first so I can save your baby's profile.",
+        "es": "Por favor usa /start primero para guardar el perfil de tu bebé.",
+        "de": "Bitte starte zuerst /start, damit ich das Profil deines Babys speichern kann.",
+        "zh": "请先运行 /start 以便我保存您宝宝的个人资料。",
+    }
+    err_no_plan = {
+        "en": "I couldn't build a reliable weekly plan right now. Please try again or send a fresh meal idea first.",
+        "es": "No pude crear un plan semanal ahora. Por favor intenta de nuevo o envía una nueva idea.",
+        "de": "Ich konnte keinen zuverlässigen Wochenplan erstellen. Bitte versuche es erneut oder sende eine neue Idee.",
+        "zh": "我现在无法制定可靠的每周计划。请重试或发送新的餐饮想法。",
+    }
+
     profile = get_profile(user.id)
     if not profile:
-        error_msg = "Please run /start first so I can save your baby's profile."
-        if language == "es":
-            error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+        await update.message.reply_text(
+            err_no_profile.get(language, err_no_profile["en"]),
+            reply_markup=main_menu_markup(),
+        )
         return
+
     week_start = week_start_for_plans(date.today())
     existing = get_weekly_plan(user.id, week_start=week_start)
+
     if existing:
         try:
             plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
         except Exception:
             plan_obj = {"days": {}, "raw": str(existing["plan_json"])}
         if plan_has_content(plan_obj):
-            week_label = f"Week of {week_start.isoformat()}"
-            if language == "es":
-                week_label = f"Semana del {week_start.isoformat()}"
+            week_label_map = {
+                "en": f"Week of {week_start.isoformat()}",
+                "es": f"Semana del {week_start.isoformat()}",
+                "de": f"Woche vom {week_start.isoformat()}",
+                "zh": f"周 {week_start.isoformat()}",
+            }
+            tip_map = {
+                "en": "\n\n💡 Tap a day to expand →",
+                "es": "\n\n💡 Toca un día para expandir →",
+                "de": "\n\n💡 Tippe auf einen Tag zum Erweitern →",
+                "zh": "\n\n💡 点击日期展开详情 →",
+            }
+            week_label = week_label_map.get(language, week_label_map["en"])
+            tip = tip_map.get(language, tip_map["en"])
             digest = render_weekly_plan_digest(plan_obj, language)
             stats = get_meal_rating_stats(user.id, week_start)
             footer = ""
             if stats and stats.get("total_meals", 0) >= 3:
-                footer = f"\n\nYou've rated {stats['total_meals']} meals — shall I factor your preferences into next week's plan?"
-            tip = "\n\n💡 Tap a day to expand →" if language == "en" else "\n\n💡 Toca un día para expandir →"
+                footer_map = {
+                    "en": f"\n\nYou've rated {stats['total_meals']} meals — shall I factor your preferences into next week's plan?",
+                    "es": f"\n\nHas valorado {stats['total_meals']} comidas. ¿Tengo en cuenta tus preferencias para el próximo plan?",
+                    "de": f"\n\nDu hast {stats['total_meals']} Mahlzeiten bewertet — soll ich deine Präferenzen in den nächsten Plan einbeziehen?",
+                    "zh": f"\n\n您已评价 {stats['total_meals']} 餐 — 我是否将您的偏好纳入下周计划？",
+                }
+                footer = footer_map.get(language, footer_map["en"])
             await update.message.reply_text(
                 f"📅 {week_label}{tip}\n\n{digest}{footer}",
                 reply_markup=build_weekly_plan_keyboard(language),
             )
             return
+
     inspirations = get_recent_inspirations(user.id, limit=10)
     await update.message.chat.send_action("typing")
-    plan_obj = await generate_weekly_plan(profile=profile, inspirations=inspirations, week_start=week_start, language=language, telegram_user_id=user.id)
+    plan_obj = await generate_weekly_plan(
+        profile=profile, inspirations=inspirations,
+        week_start=week_start, language=language, telegram_user_id=user.id,
+    )
     if not plan_has_content(plan_obj):
-        error_msg = "I couldn't build a reliable weekly plan right now. Please try again in a moment or send a fresh meal idea first."
-        if language == "es":
-            error_msg = "No pude crear un plan semanal confiable ahora. Por favor intenta de nuevo o envía una nueva idea de comida primero."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+        await update.message.reply_text(
+            err_no_plan.get(language, err_no_plan["en"]),
+            reply_markup=main_menu_markup(),
+        )
         return
+
     upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
-    week_label = f"Week of {week_start.isoformat()}"
-    if language == "es":
-        week_label = f"Semana del {week_start.isoformat()}"
+    week_label_map = {
+        "en": f"Week of {week_start.isoformat()}",
+        "es": f"Semana del {week_start.isoformat()}",
+        "de": f"Woche vom {week_start.isoformat()}",
+        "zh": f"周 {week_start.isoformat()}",
+    }
+    tip_map = {
+        "en": "\n\n💡 Tap a day to expand →",
+        "es": "\n\n💡 Toca un día para expandir →",
+        "de": "\n\n💡 Tippe auf einen Tag zum Erweitern →",
+        "zh": "\n\n💡 点击日期展开详情 →",
+    }
+    week_label = week_label_map.get(language, week_label_map["en"])
+    tip = tip_map.get(language, tip_map["en"])
     digest = render_weekly_plan_digest(plan_obj, language)
-    tip = "\n\n💡 Tap a day to expand →" if language == "en" else "\n\n💡 Toca un día para expandir →"
     await update.message.reply_text(
         f"📅 {week_label}{tip}\n\n{digest}",
         reply_markup=build_weekly_plan_keyboard(language),
@@ -3127,6 +3303,19 @@ async def shopping_list_command(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.chat.send_action("typing")
     list_text = await generate_shopping_list(plan_json=plan_obj, language=language, telegram_user_id=user.id)
     await _reply_chunked(update, format_shopping_list_message(list_text, language), reply_markup=main_menu_markup())
+
+
+async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message:
+        return
+    user = update.effective_user
+    if not user:
+        return
+    upsert_user(user.id, user.language_code)
+    language = get_user_language(user.id, user.language_code or "en")
+    plans = get_recent_plans(user.id, limit=3)
+    inspirations = get_recent_inspirations(user.id, limit=5)
+    await _reply_chunked(update, render_history_message(plans, inspirations, language), reply_markup=main_menu_markup())
 
 
 async def allergen_journal_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -4092,7 +4281,7 @@ async def handle_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if not data.startswith("lang:"):
         return
     new_lang = data.split(":", 1)[1]
-    if new_lang not in ("en", "es"):
+    if new_lang not in ("en", "es", "de", "zh"):
         return
 
     with _db_conn() as conn:
@@ -4100,7 +4289,13 @@ async def handle_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "UPDATE users SET preferred_language = ? WHERE telegram_user_id = ?",
             (new_lang, user.id),
         )
-    msg = "Language set to English." if new_lang == "en" else "Idioma configurado a Español."
+    lang_msgs = {
+        "en": "Language set to English.",
+        "es": "Idioma configurado a Español.",
+        "de": "Sprache auf Deutsch gestellt.",
+        "zh": "语言已设置为中文。",
+    }
+    msg = lang_msgs.get(new_lang, "Language updated.")
     await query.answer(msg, show_alert=True)
 
 
