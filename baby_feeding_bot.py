@@ -1979,8 +1979,6 @@ async def generate_meal_for_slot(
     nutritional information rather than LLM hallucination.
     """
     system = MEAL_SYSTEM_PROMPT
-    if language == "zh":
-        system = system.replace("You are a helpful assistant", "Eres un asistente útil")
 
     age_safety = age_safety_rules_text(profile)
     age_months = int(profile.get("age_months", 12)) if profile else 12
@@ -2024,8 +2022,6 @@ async def generate_meal_for_slot(
 
 async def generate_two_adaptations(*, inspiration: str, profile: Optional[dict[str, Any]], language: str) -> List[str]:
     system = MEAL_SYSTEM_PROMPT
-    if language == "zh":
-        system = system.replace("You are a helpful assistant", "Eres un asistente útil")
 
     age_safety = age_safety_rules_text(profile)
     prompt = (
@@ -2038,7 +2034,7 @@ async def generate_two_adaptations(*, inspiration: str, profile: Optional[dict[s
         f"Constraints:\n{profile_constraints_text(profile)}\n\n"
         f"Age-specific safety:\n{age_safety}\n\n"
         f"Inspiration:\n{inspiration}\n\n"
-        f"Respond in language: {'Spanish' if language == 'es' else 'English'}"
+        f"Respond in language: {'Chinese' if language == 'zh' else 'English'}"
     )
     text = await llm_generate(prompt, system_prompt=system, temperature=0.2, max_tokens=700)
     blocks = [b.strip() for b in re.split(r"\n\s*\n", text) if b.strip()]
@@ -2143,8 +2139,6 @@ async def generate_weekly_plan(
 ) -> dict[str, Any]:
     inspiration_text = "\n".join([f"- {i.get('summary', '')}".strip() for i in inspirations if i.get("summary")]) or "none"
     system = MEAL_SYSTEM_PROMPT
-    if language == "zh":
-        system = system.replace("You are a helpful assistant", "Eres un asistente útil")
 
     age_safety = age_safety_rules_text(profile)
     age_months = int(profile.get("age_months", 12)) if profile else 12
@@ -2185,7 +2179,7 @@ async def generate_weekly_plan(
         f"{'Based on past feedback, user prefers: ' + feedback_insight + '\n\n' if feedback_insight else ''}"
         "Return ONLY valid JSON matching this top-level shape:\n"
         '{ "week_start_date": "YYYY-MM-DD", "days": { "mon": { "breakfast": {...}, "snack1": {...}, "lunch": {...}, "snack2": {...}, "dinner": {...} }, "...": "..." } }\n\n'
-        f"Respond in language: {'Spanish' if language == 'es' else 'English'}"
+        f"Respond in language: {'Chinese' if language == 'zh' else 'English'}"
     )
     text = await llm_generate(prompt, system_prompt=system, temperature=0.2, max_tokens=5000)
     parsed = parse_json_object(text)
@@ -2283,10 +2277,8 @@ async def generate_shopping_list(*, plan_json: dict[str, Any], language: str, te
     dedup_text = "\n".join(dedup_lines) or "No ingredients found."
 
     system = MEAL_SYSTEM_PROMPT
-    if language == "zh":
-        system = system.replace("You are a helpful assistant", "Eres un asistente útil")
 
-    lang = "Spanish" if language == "zh" else "English"
+    lang = "Chinese" if language == "zh" else "English"
     prompt = (
         "You are a shopping list generator for a baby food meal plan.\n"
         "Given the ingredients below (already deduplicated), create a clean shopping list.\n"
@@ -2943,7 +2935,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "Return 2-3 bullet points.\n\n"
             f"Link: {url}\n"
             f"Message context: {text}\n\n"
-            f"Respond in language: {'Spanish' if language == 'es' else 'English'}"
+            f"Respond in language: {'Chinese' if language == 'zh' else 'English'}"
         )
         inspiration_summary = await llm_generate(summary_prompt, temperature=0.3, max_tokens=400)
         adaptations = await generate_two_adaptations(inspiration=inspiration_summary, profile=profile, language=language)
