@@ -206,7 +206,7 @@ MENU_TO_ACTION = {
     "🥜 Update allergies": "update_allergies",
     "🥜 Allergen journal": "allergen_journal",
     "❓ Help": "help",
-    "🌐 EN/ES": "toggle_lang",
+    "🌐 Lang": "toggle_lang",
     "👤 Profile": "profile",
 }
 DAY_LABELS = {
@@ -415,7 +415,7 @@ def safety_check_meal(
         warnings.append(
             "BLOCKED: Contains unsafe ingredient(s) for babies/toddlers."
             if language != "zh"
-            else "BLOQUEADO: Contiene ingrediente(s) no seguros para bebés."
+            else "拦截：含有对婴儿/幼儿不安全的成分。"
         )
 
     # 2. Profile allergen check (known allergies from profile)
@@ -432,7 +432,7 @@ def safety_check_meal(
                 warnings.append(
                     f"BLOCKED: Contains '{allergen_word}' which is in baby's allergen list."
                     if language != "zh"
-                    else f"BLOQUEADO: Contiene '{allergen_word}' que está en la lista de alérgenos."
+                    else f"拦截：含有'{allergen_word}'，在宝宝过敏原列表中。"
                 )
 
     # 3. Not-yet-introduced allergen check
@@ -449,8 +449,7 @@ def safety_check_meal(
                     f"Warning: Contains '{allergen}' which hasn't been formally introduced yet. "
                     "Consider introducing it separately first."
                     if language != "zh"
-                    else f"Advertencia: Contiene '{allergen}' que aún no se ha introducido formalmente. "
-                    "Considere introducirlo por separado primero."
+                    else f"警告：含有'{allergen}'，尚未正式引入。建议先单独引入。"
                 )
 
     # 4. Age < 12 months: honey is an absolute block regardless of form
@@ -463,7 +462,7 @@ def safety_check_meal(
             warnings.append(
                 "BLOCKED: Honey is never safe for babies under 12 months (infant botulism risk)."
                 if language != "zh"
-                else "BLOQUEADO: La miel nunca es segura para bebés menores de 12 meses (riesgo de botulismo infantil)."
+                else "拦截：蜂蜜对12个月以下婴儿永远不安全（婴儿肉毒杆菌风险）。"
             )
 
     # 5. High sodium ingredient flag
@@ -471,7 +470,7 @@ def safety_check_meal(
         warnings.append(
             "High-sodium ingredient detected. For baby, use low-sodium alternatives where possible."
             if language != "zh"
-            else "Ingrediente con alto contenido de sodio detectado. Para el bebé, use alternativas con bajo sodio cuando sea posible."
+            else "检测到高钠成分。请为宝宝使用低钠替代品。"
         )
 
     # 6. Sodium number check from safety_note (defensive — LLM sometimes mentions "400mg sodium")
@@ -484,8 +483,7 @@ def safety_check_meal(
                 f"Safety note indicates high sodium ({sodium_mg:.0f}mg). "
                 f"Consider reducing for baby's age ({age_months}mo)."
                 if language != "zh"
-                else f"La nota de seguridad indica alto sodio ({sodium_mg:.0f}mg). "
-                f"Considere reducir para la edad del bebé ({age_months} meses)."
+                else f"安全提示显示高钠（{sodium_mg:.0f}毫克）。请根据宝宝年龄（{age_months}个月）减少。"
             )
 
     # Determine final severity
@@ -540,8 +538,20 @@ def _db_conn() -> sqlite3.Connection:
     return conn
 
 
-def main_menu_markup() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(MAIN_MENU_ROWS, resize_keyboard=True)
+def main_menu_markup(language: Optional[str] = None, telegram_user_id: Optional[int] = None) -> ReplyKeyboardMarkup:
+    if language is None and telegram_user_id is not None:
+        language = get_user_language(telegram_user_id, "en")
+    if language is None:
+        language = "en"
+    lang_label = {"en": "🌐 中文", "zh": "🌐 English"}.get(language, "🌐 Lang")
+    rows: List[List[str]] = [
+        ["📆 Today", "📅 Weekly plan"],
+        ["🛒 Shopping list", "📚 History"],
+        ["👶 Update age", "🥜 Update allergies"],
+        ["🥜 Allergen journal", "❓ Help"],
+        [lang_label, "👤 Profile"],
+    ]
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
 def clean_bullet(text: str) -> str:
@@ -808,8 +818,9 @@ OUTCOME_VALUES = ["tolerated", "reaction", "unknown"]
 
 def build_allergen_journal_keyboard(language: str = "en") -> InlineKeyboardMarkup:
     """Build inline keyboard for allergen journal: log new + quick-add common allergens."""
+    new_btn = "🥜 Log new allergen" if language == "en" else "🥜 记录新过敏原"
     rows = [
-        [InlineKeyboardButton("🥜 Log new allergen", callback_data="aj_new")],
+        [InlineKeyboardButton(new_btn, callback_data="aj_new")],
         [
             InlineKeyboardButton("🥛 Milk", callback_data="aj_quick:milk"),
             InlineKeyboardButton("🥚 Egg", callback_data="aj_quick:egg"),
@@ -819,19 +830,24 @@ def build_allergen_journal_keyboard(language: str = "en") -> InlineKeyboardMarku
     return InlineKeyboardMarkup(rows)
 
 
-def build_severity_keyboard() -> InlineKeyboardMarkup:
+def build_severity_keyboard(language: str = "en") -> InlineKeyboardMarkup:
     """Build inline keyboard to pick severity level."""
+    tolerated = "✅ Tolerated" if language == "en" else "✅ 耐受"
+    mild = "⚠️ Mild" if language == "en" else "⚠️ 轻微"
+    moderate = "⚠️ Moderate" if language == "en" else "⚠️ 中度"
+    severe = "🚨 Severe" if language == "en" else "🚨 严重"
+    unknown = "❓ Unknown" if language == "en" else "❓ 不明"
     rows = [
         [
-            InlineKeyboardButton("✅ Tolerated", callback_data="intro_outcome:tolerated"),
+            InlineKeyboardButton(tolerated, callback_data="intro_outcome:tolerated"),
         ],
         [
-            InlineKeyboardButton("⚠️ Mild", callback_data="intro_severity:mild"),
-            InlineKeyboardButton("⚠️ Moderate", callback_data="intro_severity:moderate"),
-            InlineKeyboardButton("🚨 Severe", callback_data="intro_severity:severe"),
+            InlineKeyboardButton(mild, callback_data="intro_severity:mild"),
+            InlineKeyboardButton(moderate, callback_data="intro_severity:moderate"),
+            InlineKeyboardButton(severe, callback_data="intro_severity:severe"),
         ],
         [
-            InlineKeyboardButton("❓ Unknown", callback_data="intro_severity:unknown"),
+            InlineKeyboardButton(unknown, callback_data="intro_severity:unknown"),
         ],
     ]
     return InlineKeyboardMarkup(rows)
@@ -989,13 +1005,13 @@ def generate_nutrition_summary(plan: dict[str, Any], age_months: int = 12, langu
     lines.append("")
     tip = "💡 Tip: Serve iron-rich foods with vitamin C (e.g., strawberry with fortified cereal) to boost absorption."
     if language == "zh":
-        tip = "💡 Consejo: Sirve alimentos ricos en hierro con vitamina C (ej., fresa con cereal fortificado) para mejorar la absorción."
+        tip = "💡 建议：搭配维生素C食物（如草莓配强化谷物）来增强铁的吸收。"
     lines.append(tip)
     return "\n".join(lines)
     """One scannable line per day — no meal details."""
     days = plan.get("days") or {}
     if not days:
-        return "No meals planned yet." if language == "en" else "Aún no hay comidas planificadas."
+        return "No meals planned yet." if language == "en" else "暂无计划。"
     lines = ["📅 Weekly Plan", "━━━━━━━━━━━━━━━━━━━━", ""]
     for day_key, day_label in DAY_LABELS.items():
         day = days.get(day_key)
@@ -1164,7 +1180,7 @@ def render_weekly_plan(
 ) -> str:
     days = plan.get("days") or {}
     if not days:
-        return "No meals planned yet." if language == "en" else "Aún no hay comidas planificadas."
+        return "No meals planned yet." if language == "en" else "暂无计划。"
 
     lines: List[str] = ["📅 Weekly Plan", "━━━━━━━━━━━━━━━━━━━━", ""]
     for day_key, day_label in DAY_LABELS.items():
@@ -1204,8 +1220,8 @@ def render_history_message(plans: List[dict[str, Any]], inspirations: List[dict[
     """Digest-format history: one line per plan week, one line per inspiration."""
     plans_header = "📚 Recent Plans" if language == "en" else "📚 最近的计划"
     inspirations_header = "💡 Recent Inspirations" if language == "en" else "💡 最近的灵感"
-    no_plans = "No weekly plans yet." if language == "en" else "Aún no hay planes semanales."
-    no_inspirations = "No saved inspirations yet." if language == "en" else "Aún no hay inspiraciones guardadas."
+    no_plans = "No weekly plans yet." if language == "en" else "暂无每周计划。"
+    no_inspirations = "No saved inspirations yet." if language == "en" else "暂无保存的灵感。"
 
     lines = [plans_header, "━━━━━━━━━━━━━━━━━━━━", ""]
     if plans:
@@ -1233,8 +1249,9 @@ def render_history_message(plans: List[dict[str, Any]], inspirations: List[dict[
 
 def _render_shopping_list_from_json(raw: str, language: str = "en") -> str:
     """
-    Parse LLM JSON response and render as formatted shopping list.
-    Falls back to stripped text if JSON parsing fails.
+    Parse LLM JSON response and render as user-friendly formatted shopping list.
+    Uses checkmark bullets (☐), shows quantities where present, adds item-count footer,
+    and falls back to smart text parsing if JSON is unavailable.
     """
     header = "🛒 Shopping List" if language == "en" else "🛒 购物清单"
     try:
@@ -1244,9 +1261,20 @@ def _render_shopping_list_from_json(raw: str, language: str = "en") -> str:
         if not isinstance(data, dict):
             raise ValueError("Not a dict")
     except Exception:
-        # Fallback: strip any remaining markdown and return as-is
+        # Smart fallback: strip markdown and parse line-by-line
         fallback = re.sub(r"```", "", raw).strip()
-        return f"{header}\n━━━━━━━━━━━━━━━━━━━━\n\n{fallback}"
+        lines = [l.strip() for l in fallback.splitlines() if l.strip()]
+        if not lines:
+            return f"{header}\n━━━━━━━━━━━━━━━━━━━━\n\n(found nothing to list)"
+        out_lines = [header, "━━━━━━━━━━━━━━━━━━━━", ""]
+        for line in lines:
+            # Strip common bullet prefixes
+            cleaned_line = re.sub(r"^[\-\*\d\)\.\s]+", "", line).strip()
+            if cleaned_line:
+                out_lines.append(f"☐ {cleaned_line}")
+        out_lines.append("")
+        out_lines.append(f"Total: {len(out_lines)-4} items" if language == "en" else f"共 {len(out_lines)-4} 项")
+        return "\n".join(out_lines)
 
     CATEGORY_EMOJI = {
         "produce": "🥦 Produce",
@@ -1255,24 +1283,55 @@ def _render_shopping_list_from_json(raw: str, language: str = "en") -> str:
         "pantry": "🫙 Pantry",
         "other": "📦 Other",
     }
-    all_items = []
-    lines = [header, "━━━━━━━━━━━━━━━━━━━━", ""]
+    all_items: List[str] = []
+    lines: List[str] = [header, "━━━━━━━━━━━━━━━━━━━━", ""]
     for key, label in CATEGORY_EMOJI.items():
-        items = data.get(key, [])
-        if not items:
+        raw_items = data.get(key, [])
+        if not raw_items:
             continue
-        if isinstance(items, list):
-            text = " | ".join(str(i) for i in items)
+        lines.append(label)
+        if isinstance(raw_items, dict):
+            # Support {"item": quantity} format
+            for item_name, qty in raw_items.items():
+                item_str = f"{item_name}"
+                if qty and str(qty) not in ("1", "true", "yes"):
+                    item_str = f"{item_str} ×{qty}"
+                lines.append(f"☐ {item_str}")
+                all_items.append(item_str)
+        elif isinstance(raw_items, list):
+            for raw_item in raw_items:
+                if isinstance(raw_item, dict):
+                    name = raw_item.get("name", "")
+                    qty = raw_item.get("quantity") or raw_item.get("qty") or ""
+                    item_str = str(name) if name else str(raw_item)
+                    if qty:
+                        item_str = f"{item_str} ×{qty}"
+                else:
+                    item_str = str(raw_item)
+                    # Handle "3× carrots" or "3 x carrots" format before stripping
+                    m = re.match(r"^(\d+)\s*[×xX]\s*(.+)$", item_str)
+                    if m:
+                        item_str = f"{m.group(1)}× {m.group(2).strip()}"
+                    else:
+                        # Strip bullet prefixes
+                        item_str = re.sub(r"^[\-\*\d\)\.\s]+", "", item_str).strip()
+                if item_str:
+                    lines.append(f"  ☐ {item_str}")
+                    all_items.append(item_str)
         else:
-            text = str(items)
-        lines.append(f"{label}")
-        lines.append(f"  {text}")
-        all_items.extend(items)
+            item_str = str(raw_items).strip()
+            if item_str:
+                lines.append(f"  ☐ {item_str}")
+                all_items.append(item_str)
 
     if not all_items:
         fallback = re.sub(r"```", "", raw).strip()
         return f"{header}\n━━━━━━━━━━━━━━━━━━━━\n\n{fallback}"
 
+    lines.append("")
+    total = len(all_items)
+    footer = f"Total: {total} items" if language == "en" else f"共 {total} 项"
+    lines.append(footer)
     return "\n".join(lines)
 
 
@@ -1280,7 +1339,7 @@ def format_shopping_list_message(list_text: str, language: str = "en") -> str:
     if not (list_text or "").strip():
         fallback = "I couldn't build a shopping list yet. Please try again after generating a weekly plan."
         if language != "en":
-            fallback = "No pude crear una lista de compras. Inténtalo de nuevo después de generar un plan semanal."
+            fallback = "无法生成购物清单。请先创建每周计划后再试。"
         return f"🛒 Shopping List\n\n{fallback}"
     return _render_shopping_list_from_json(list_text, language)
 
@@ -2804,16 +2863,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         context.user_data.pop("awaiting_allergies_update", None)
         prompt = "Please send your baby's age in months, for example: 12"
         if language == "zh":
-            prompt = "Por favor envía la edad de tu bebé en meses, por ejemplo: 12"
-        await update.message.reply_text(prompt, reply_markup=main_menu_markup())
+            prompt = "请发送您宝宝的月龄，例如：12"
+        await update.message.reply_text(prompt, reply_markup=main_menu_markup(language, user.id))
         return
     if action == "update_allergies":
         context.user_data["awaiting_allergies_update"] = True
         context.user_data.pop("awaiting_age_update", None)
         prompt = "Please send allergies as a comma-separated list, or reply with none."
         if language == "zh":
-            prompt = "Por favor envía las alergias como una lista separada por comas, o responde con none."
-        await update.message.reply_text(prompt, reply_markup=main_menu_markup())
+            prompt = "请以逗号分隔列表发送过敏原，或回复 none。"
+        await update.message.reply_text(prompt, reply_markup=main_menu_markup(language, user.id))
         return
     if action == "allergen_journal":
         await allergen_journal_command(update, context)
@@ -2824,7 +2883,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         with _db_conn() as conn:
             conn.execute("UPDATE users SET preferred_language = ? WHERE telegram_user_id = ?", (new_lang, user.id))
         msg = "Language set to English." if new_lang == "en" else "语言已设置为中文。"
-        await update.message.reply_text(msg, reply_markup=main_menu_markup())
+        await update.message.reply_text(msg, reply_markup=main_menu_markup(language, user.id))
         return
     if action == "profile":
         await profile_command(update, context)
@@ -2835,8 +2894,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if not profile:
             error_msg = "Please run /start first so I can save your profile."
             if language == "zh":
-                error_msg = "Por favor usa /start primero para guardar tu perfil."
-            await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+                error_msg = "请先运行 /start 以便我保存您的个人资料。"
+            await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
             return
         age_months = parse_int_or_default(text, int(profile.get("age_months") or 12))
         set_profile(
@@ -2847,15 +2906,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         response = f"Updated age to {age_months} months."
         if language == "zh":
-            response = f"Edad actualizada a {age_months} meses."
-        await update.message.reply_text(response, reply_markup=main_menu_markup())
+            response = f"已更新月龄为 {age_months} 个月。"
+        await update.message.reply_text(response, reply_markup=main_menu_markup(language, user.id))
         return
     if context.user_data.pop("awaiting_allergies_update", False):
         if not profile:
             error_msg = "Please run /start first so I can save your profile."
             if language == "zh":
-                error_msg = "Por favor usa /start primero para guardar tu perfil."
-            await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+                error_msg = "请先运行 /start 以便我保存您的个人资料。"
+            await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
             return
         allergies = normalize_allergies(text)
         set_profile(
@@ -2866,8 +2925,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         response = f"Updated allergies to: {allergies}."
         if language == "zh":
-            response = f"Alergias actualizadas a: {allergies}."
-        await update.message.reply_text(response, reply_markup=main_menu_markup())
+            response = f"已更新过敏原为：{allergies}。"
+        await update.message.reply_text(response, reply_markup=main_menu_markup(language, user.id))
         return
     quick_apply = parse_quick_apply_text(text)
     if quick_apply:
@@ -2875,31 +2934,31 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if not profile:
             error_msg = "Please run /start first so I can create your profile."
             if language == "zh":
-                error_msg = "Por favor usa /start primero para crear tu perfil."
-            await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+                error_msg = "请先运行 /start 以便我创建您的个人资料。"
+            await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
             return
         inspiration_id = context.user_data.get("last_inspiration_id")
         inspiration = get_inspiration(user.id, int(inspiration_id)) if inspiration_id else get_latest_inspiration(user.id)
         if not inspiration:
             error_msg = "I don't have a recent inspiration to place yet. Send a photo, link, or meal idea first."
             if language == "zh":
-                error_msg = "No tengo una inspiración reciente para colocar. Envía una foto, enlace o idea de comida primero."
-            await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+                error_msg = "我还没有最近的灵感可以使用。请先发送照片、链接或餐食想法。"
+            await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
             return
         week_start = week_start_for_plans(date.today())
         existing = get_weekly_plan(user.id, week_start=week_start)
         if not existing:
             error_msg = "I need a weekly plan first. Tap Weekly plan and I'll build one for you."
             if language == "zh":
-                error_msg = "Primero necesito un plan semanal. Toca Plan semanal y yo crearé uno para ti."
-            await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+                error_msg = "我需要先有一个每周计划。点击\"每周计划\"，我会为你创建一个。"
+            await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
             return
         try:
             plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
         except Exception:
             error_msg = "I couldn't read your current plan. Tap Weekly plan to refresh it."
             if language == "zh":
-                error_msg = "No pude leer tu plan actual. Toca Plan semanal para actualizzarlo."
+                error_msg = "我无法读取您的当前计划。点击\"每周计划\"来刷新。"
             await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
             return
         await update.message.chat.send_action("typing")
@@ -2916,15 +2975,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if not normalized_meal:
             error_msg = "I couldn't safely turn that idea into a meal right now. Please try another idea or regenerate the weekly plan."
             if language == "zh":
-                error_msg = "No pude convertir esa idea en una comida ahora. Prueba con otra idea o regenera el plan semanal."
-            await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+                error_msg = "我现在无法安全地将该想法转换为餐食。请尝试另一个想法或重新生成每周计划。"
+            await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
             return
         plan_obj.setdefault("days", {}).setdefault(day_key, {})[slot_key] = normalized_meal
         upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
         await _reply_chunked(
             update,
             f"{render_single_meal(day_key, slot_key, normalized_meal, language)}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
-            reply_markup=main_menu_markup(),
+            reply_markup=main_menu_markup(language, user.id),
         )
         return
     await update.message.chat.send_action("typing")
@@ -2982,12 +3041,12 @@ async def onboarding_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         if user.language_code == "zh":
             welcome = (
-                "¡Bienvenido de vuelta 👋\n\n"
-                "¿Qué te gustaría hacer hoy?\n"
-                "• Crear o ver tu plan semanal\n"
-                "• Obtener una lista de compras\n"
-                "• Enviar una nueva foto o idea de comida\n\n"
-                "También puedes responder con algo como \"Use 1 for Wednesday dinner\" después de que sugiera opciones de comida."
+                "欢迎回来 👋\n\n"
+                "今天想做什么？\n"
+                "• 创建或查看每周计划\n"
+                "• 获取购物清单\n"
+                "• 发送新的照片或餐食想法\n\n"
+                "在我推荐餐食选项后，你也可以回复类似 \"Use 1 for Wednesday dinner\" 的消息。"
             )
         await update.message.reply_text(welcome, reply_markup=main_menu_markup())
         return ConversationHandler.END
@@ -3007,13 +3066,13 @@ async def onboarding_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
     if locale == "zh":
         intro = (
-            "¡Hola! Soy tu asistente de alimentación infantil 🍼\n\n"
-            "Te ayudo a:\n"
-            "• Convertir ideas de comida en comidas seguras para bebés\n"
-            "• Crear planes semanales de comidas\n"
-            "• Hacer listas de compras\n\n"
-            "Para empezar, ¿cuántos meses tiene tu bebé?\n"
-            "(Responde con un número, o envía skip para usar 12 meses)"
+            "你好！我是您的宝宝喂养助手 🍼\n\n"
+            "我可以帮您：\n"
+            "• 将食物想法转化为婴儿安全的餐食\n"
+            "• 创建每周餐食计划\n"
+            "• 生成购物清单\n\n"
+            "首先，您的宝宝多大了（以月为单位）？\n"
+            "（回复数字，或发送 skip 使用12个月）"
         )
     await update.message.reply_text(intro, reply_markup=main_menu_markup())
     return ONBOARDING_AGE
@@ -3030,8 +3089,8 @@ async def onboarding_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
     if context.user_data.get("onboarding_language") == "zh":
         prompt = (
-            "¿Alguna alergia o alimento a evitar?\n"
-            "Responde con una lista separada por comas, o envía none."
+            "有什么过敏或需要避免的食物吗？\n"
+            "请回复逗号分隔的列表，或发送 none。"
         )
     await update.message.reply_text(prompt)
     return ONBOARDING_ALLERGIES
@@ -3055,9 +3114,9 @@ async def onboarding_allergies(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     if preferred_language == "zh":
         ready = (
-            "¡Todo listo ✨\n\n"
-            "A continuación, envía una foto de comida, un enlace o una idea de comida y la convertiré en opciones seguras para bebés.\n"
-            "Cuando estés listo, toca Plan semanal para crear el horario de la próxima semana."
+            "全部设置完成 ✨\n\n"
+            "接下来，发送食物照片、链接或餐食想法，我会将其转化为婴儿安全的选项。\n"
+            "准备好后，点击\"每周计划\"来创建下周的时间表。"
         )
     await update.message.reply_text(ready, reply_markup=main_menu_markup())
     return ConversationHandler.END
@@ -3245,26 +3304,26 @@ async def shopping_list_command(update: Update, context: ContextTypes.DEFAULT_TY
     if not existing:
         error_msg = "I need a weekly plan first. Tap Weekly plan and I'll build one for you."
         if language == "zh":
-            error_msg = "Primero necesito un plan semanal. Toca Plan semanal y yo crearé uno para ti."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "我需要先有一个每周计划。点击\"每周计划\"，我会为你创建一个。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     try:
         plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
     except Exception:
         error_msg = "I couldn't read your saved plan. Tap Weekly plan to refresh it."
         if language == "zh":
-            error_msg = "No pude leer tu plan guardado. Toca Plan semanal para actualizzarlo."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "我无法读取您保存的计划。点击\"每周计划\"来刷新。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     if not plan_has_content(plan_obj):
         error_msg = "Your saved plan looks incomplete. Tap Weekly plan to rebuild it."
         if language == "zh":
-            error_msg = "Tu plan guardado parece incompleto. Toca Plan semanal para reconstruirlo."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "您保存的计划看起来不完整。点击\"每周计划\"来重新构建。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     await update.message.chat.send_action("typing")
     list_text = await generate_shopping_list(plan_json=plan_obj, language=language, telegram_user_id=user.id)
-    await _reply_chunked(update, format_shopping_list_message(list_text, language), reply_markup=main_menu_markup())
+    await _reply_chunked(update, format_shopping_list_message(list_text, language), reply_markup=main_menu_markup(language, user.id))
 
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3293,14 +3352,14 @@ async def allergen_journal_command(update: Update, context: ContextTypes.DEFAULT
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
         if language == "zh":
-            error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "请先运行 /start 以便我保存您宝宝的个人资料。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
 
     entries = get_allergen_journal(user.id)
     introduced = get_introduced_allergens(user.id)
 
-    header = "🥜 Allergen Journal" if language == "en" else "🥜 Registro de Alérgenos"
+    header = "🥜 Allergen Journal" if language == "en" else "🥜 过敏原记录"
     known_allergens = profile.get("allergies", "") or ""
     known_list = [a.strip().lower() for a in known_allergens.split(",") if a.strip() and a.strip() != "none"]
 
@@ -3324,14 +3383,14 @@ async def allergen_journal_command(update: Update, context: ContextTypes.DEFAULT
             lines.append(f"• {indicator} {allergen}{sev_label} ({date_str}){rx_note}")
         lines.append("")
     else:
-        no_intro = "No allergens introduced yet." if language == "en" else "Aún no se han introducido alérgenos."
+        no_intro = "No allergens introduced yet." if language == "en" else "尚未引入任何过敏原。"
         lines.append(no_intro)
         lines.append("")
 
     track_list = ", ".join(a.capitalize() for a in ALLERGEN_TRACK_LIST)
-    track_note = f"Trackable: {track_list}" if language == "en" else f"Seguibles: {track_list}"
+    track_note = f"Trackable: {track_list}" if language == "en" else f"可跟踪：{track_list}"
     lines.append(track_note)
-    hint = '\nLog with: /introduce <allergen>' if language == "en" else '\nRegistra con: /introduce <alérgeno>'
+    hint = '\nLog with: /introduce <allergen>' if language == "en" else '\n记录方式：/introduce <过敏原>'
     lines.append(hint)
 
     await update.message.reply_text(
@@ -3353,16 +3412,16 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
         if language == "zh":
-            error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "请先运行 /start 以便我保存您宝宝的个人资料。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
 
     args = context.args or []
     if not args:
         usage = "Use /introduce <allergen> [reactions], for example: /introduce peanut or /introduce egg mild rash"
         if language == "zh":
-            usage = "Usa /introduce <alérgeno> [reacciones], por ejemplo: /introduce maní o /introduce huevo sarpullido leve"
-        await update.message.reply_text(usage, reply_markup=main_menu_markup())
+            usage = "使用方法：/introduce <过敏原> [反应]，例如：/introduce 花生 或 /introduce 鸡蛋 轻微皮疹"
+        await update.message.reply_text(usage, reply_markup=main_menu_markup(language, user.id))
         return
 
     allergen = args[0].strip().lower()
@@ -3384,8 +3443,8 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if allergen not in ALLERGEN_TRACK_LIST:
         invalid = f"'{allergen}' is not in the tracking list. Trackable allergens: {', '.join(ALLERGEN_TRACK_LIST)}"
         if language == "zh":
-            invalid = f"'{allergen}' no está en la lista. Alérgenos rastreables: {', '.join(ALLERGEN_TRACK_LIST)}"
-        await update.message.reply_text(invalid, reply_markup=main_menu_markup())
+            invalid = f"'{allergen}'不在跟踪列表中。可跟踪的过敏原：{', '.join(ALLERGEN_TRACK_LIST)}"
+        await update.message.reply_text(invalid, reply_markup=main_menu_markup(language, user.id))
         return
 
     was_new = introduce_allergen(user.id, allergen, reactions=reactions, severity=severity, outcome=outcome)
@@ -3398,8 +3457,8 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         msg = f"✅ Logged first introduction of {allergen_cap} on {now_str}."
         note = "\n\n💡 Tip: Serve a small amount and wait 3-4 days before introducing another new allergen."
         if language == "zh":
-            msg = f"✅ Registrada primera introducción de {allergen_cap} el {now_str}."
-            note = "\n\n💡 Consejo: Sirve una pequeña cantidad y espera 3-4 días antes de introducir otro alérgeno nuevo."
+            msg = f"✅ 已记录 {allergen_cap} 的首次引入，日期：{now_str}。"
+            note = "\n\n💡 建议：先喂少量，等待3-4天后再引入另一种新过敏原。"
         if reactions:
             msg += f" Reactions noted: {reactions}"
     else:
@@ -3407,7 +3466,7 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         if reactions:
             msg += f" Reactions noted: {reactions}"
 
-    await update.message.reply_text(msg + note if was_new else msg, reply_markup=main_menu_markup())
+    await update.message.reply_text(msg + note if was_new else msg, reply_markup=main_menu_markup(language, user.id))
 
 
 # --- Conversation states for /introduce flow ---
@@ -3427,16 +3486,16 @@ async def introduce_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
         if language == "zh":
-            error_msg = "Por favor usa /start primero para guardar tu perfil."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "请先运行 /start 以便我保存您宝宝的个人资料。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return ConversationHandler.END
 
     args = context.args or []
     if not args:
         prompt = "Which allergen are you introducing? (e.g., egg, peanut, milk)"
         if language == "zh":
-            prompt = "¿Qué alérgeno estás introduciendo? (ej., huevo, maní, leche)"
-        await update.message.reply_text(prompt, reply_markup=main_menu_markup())
+            prompt = "您正在引入哪种过敏原？（例如：鸡蛋、花生、牛奶）"
+        await update.message.reply_text(prompt, reply_markup=main_menu_markup(language, user.id))
         return INTRODUCE_ALLERGEN
 
     # Allergen provided directly
@@ -3444,8 +3503,8 @@ async def introduce_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if allergen not in ALLERGEN_TRACK_LIST:
         invalid = f"'{allergen}' is not in the tracking list. Trackable: {', '.join(ALLERGEN_TRACK_LIST)}"
         if language == "zh":
-            invalid = f"'{allergen}' no está en la lista. Rastreables: {', '.join(ALLERGEN_TRACK_LIST)}"
-        await update.message.reply_text(invalid, reply_markup=main_menu_markup())
+            invalid = f"'{allergen}'不在跟踪列表中。可跟踪：{', '.join(ALLERGEN_TRACK_LIST)}"
+        await update.message.reply_text(invalid, reply_markup=main_menu_markup(language, user.id))
         return ConversationHandler.END
 
     context.user_data["pending_allergen"] = allergen
@@ -3457,10 +3516,10 @@ async def introduce_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     )
     if language == "zh":
         prompt = (
-            f"Registrando: **{allergen.capitalize()}**\n\n"
-            "¿Cómo fue? Toca un botón abajo:"
+            f"正在记录：**{allergen.capitalize()}**\n\n"
+            "结果如何？点击下面的按钮："
         )
-    await update.message.reply_text(prompt, reply_markup=build_severity_keyboard(), parse_mode="Markdown")
+    await update.message.reply_text(prompt, reply_markup=build_severity_keyboard(language), parse_mode="Markdown")
     return INTRODUCE_SEVERITY
 
 
@@ -3533,8 +3592,8 @@ async def introduce_outcome(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.user_data.pop("pending_severity", None)
         prompt = f"Logging: **{allergen.capitalize()}**\n\nHow did it go? Tap a button below:"
         if language == "zh":
-            prompt = f"Registrando: **{allergen.capitalize()}**\n\n¿Cómo fue? Toca un botón abajo:"
-        await query.edit_message_text(prompt, reply_markup=build_severity_keyboard(), parse_mode="Markdown")
+            prompt = f"正在记录：**{allergen.capitalize()}**\n\n结果如何？点击下面的按钮："
+        await query.edit_message_text(prompt, reply_markup=build_severity_keyboard(language), parse_mode="Markdown")
         return INTRODUCE_SEVERITY
 
     if not data.startswith("intro_outcome_save:"):
@@ -3552,7 +3611,7 @@ async def introduce_outcome(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         severity_label = severity if severity != "unknown" else ""
         msg = f"✅ {allergen_cap} logged — {outcome_label}{(' (' + severity_label + ')') if severity_label else ''}!"
         if language == "zh":
-            msg = f"✅ {allergen_cap} registrado — {outcome_label}{(' (' + severity_label + ')') if severity_label else ''}."
+            msg = f"✅ {allergen_cap} 已记录 — {outcome_label}{(' (' + severity_label + ')') if severity_label else ''}！"
         await query.edit_message_text(msg, reply_markup=None)
         # Clear pending
         context.user_data.pop("pending_allergen", None)
@@ -3577,7 +3636,7 @@ async def introduce_text_fallback(update: Update, context: ContextTypes.DEFAULT_
     allergen = context.user_data.get("pending_allergen", "")
 
     if not allergen:
-        await update.message.reply_text("Please start with /introduce <allergen>.", reply_markup=main_menu_markup())
+        await update.message.reply_text("Please start with /introduce <allergen>.", reply_markup=main_menu_markup(language, user.id))
         return ConversationHandler.END
 
     if outcome or severity:
@@ -3593,15 +3652,15 @@ async def introduce_text_fallback(update: Update, context: ContextTypes.DEFAULT_
         allergen_cap = allergen.capitalize()
         msg = f"✅ {allergen_cap} logged — {severity or '?'} / {outcome or '?'}!"
         if language == "zh":
-            msg = f"✅ {allergen_cap} registrado — {severity or '?'} / {outcome or '?'}."
-        await update.message.reply_text(msg, reply_markup=main_menu_markup())
+            msg = f"✅ {allergen_cap} 已记录 — {severity or '?'} / {outcome or '?'}！"
+        await update.message.reply_text(msg, reply_markup=main_menu_markup(language, user.id))
         context.user_data.pop("pending_allergen", None)
         context.user_data.pop("pending_severity", None)
         return ConversationHandler.END
 
     await update.message.reply_text(
         "I didn't understand that. Use /cancel to start over.",
-        reply_markup=main_menu_markup(),
+        reply_markup=main_menu_markup(language, user.id),
     )
     return INTRODUCE_SEVERITY
 
@@ -3620,8 +3679,8 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         context.user_data[key] = None
     msg = "Cancelled. What would you like to do?"
     if language == "zh":
-        msg = "Cancelado. ¿Qué te gustaría hacer?"
-    await update.message.reply_text(msg, reply_markup=main_menu_markup())
+        msg = "已取消。您想做什么？"
+    await update.message.reply_text(msg, reply_markup=main_menu_markup(language, user.id))
 
 
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3817,31 +3876,31 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not day_key or not slot_key:
         error_msg = "Please use a day from Monday to Sunday and a slot like breakfast, lunch, dinner, snack1, or snack2."
         if language == "zh":
-            error_msg = "Por favor usa un día de lunes a domingo y una comida como breakfast, lunch, dinner, snack1, o snack2."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "请使用周一到周日的某一天，以及早餐、午餐、晚餐、点心1或点心2等时段。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     inspiration = get_inspiration(user.id, inspiration_id)
     if not inspiration:
         error_msg = "I couldn't find that saved inspiration."
         if language == "zh":
-            error_msg = "No pude encontrar esa inspiración guardada."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "找不到该保存的灵感。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     week_start = week_start_for_plans(date.today())
     existing = get_weekly_plan(user.id, week_start=week_start)
     if not existing:
         error_msg = "I need a weekly plan first. Tap Weekly plan and I'll build one for you."
         if language == "zh":
-            error_msg = "Primero necesito un plan semanal. Toca Plan semanal y yo crearé uno para ti."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "我需要先有一个每周计划。点击\"每周计划\"，我会为你创建一个。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     try:
         plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
     except Exception:
         error_msg = "I couldn't read your saved plan. Tap Weekly plan to refresh it."
         if language == "zh":
-            error_msg = "No pude leer tu plan guardado. Toca Plan semanal para actualizzarlo."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "我无法读取您保存的计划。点击\"每周计划\"来刷新。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     await update.message.chat.send_action("typing")
     normalized_meal = await _safety_checked_generate_meal(
@@ -3856,15 +3915,15 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not normalized_meal:
         error_msg = "I couldn't safely update that meal right now. Please try again with a different inspiration."
         if language == "zh":
-            error_msg = "No pude actualizar esa comida de manera segura ahora. Por favor intenta de nuevo con una inspiración diferente."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "我现在无法安全地更新该餐食。请使用不同的灵感重试。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     plan_obj.setdefault("days", {}).setdefault(day_key, {})[slot_key] = normalized_meal
     upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
     await _reply_chunked(
         update,
         f"{render_single_meal(day_key, slot_key, normalized_meal, language)}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
-        reply_markup=main_menu_markup(),
+        reply_markup=main_menu_markup(language, user.id),
     )
 
 
@@ -3880,15 +3939,15 @@ async def rate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
         if language == "zh":
-            error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "请先运行 /start 以便我保存您宝宝的个人资料。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     args = context.args or []
     if len(args) < 2:
         usage = "Use /rate <meal_id> <up|down|0> [comment], for example: /rate tue.lunch up loved it"
         if language == "zh":
-            usage = "Usa /rate <meal_id> <up|down|0> [comentario], por ejemplo: /rate tue.lunch up me encantó"
-        await update.message.reply_text(usage, reply_markup=main_menu_markup())
+            usage = "使用方法：/rate <餐食ID> <up|down|0> [评论]，例如：/rate tue.lunch up 很喜餐"
+        await update.message.reply_text(usage, reply_markup=main_menu_markup(language, user.id))
         return
     meal_id = args[0].strip().lower()
     rating_token = args[1].strip().lower()
@@ -3902,8 +3961,8 @@ async def rate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         error_msg = "Please rate with up, down, or 0."
         if language == "zh":
-            error_msg = "Por favor califica con up, down, o 0."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "请使用 up、down 或 0 来评分。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     comment = " ".join(args[2:]).strip() if len(args) > 2 else None
     week_start = week_start_for_plans(date.today())
@@ -3911,8 +3970,8 @@ async def rate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not existing:
         error_msg = "I need a weekly plan first. Tap Weekly plan and I'll build one for you."
         if language == "zh":
-            error_msg = "Primero necesito un plan semanal. Toca Plan semanal y yo crearé uno para ti."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "我需要先有一个每周计划。点击\"每周计划\"，我会为你创建一个。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
     weekly_plan_id = int(existing["id"])
     now = datetime.now(UTC).isoformat()
@@ -3926,8 +3985,8 @@ async def rate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
     response = "Saved your feedback. Thank you!"
     if language == "zh":
-        response = "¡Guardado tu feedback. Gracias!"
-    await update.message.reply_text(response, reply_markup=main_menu_markup())
+        response = "已保存您的反馈。谢谢！"
+    await update.message.reply_text(response, reply_markup=main_menu_markup(language, user.id))
 
 
 async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -3943,16 +4002,16 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
         if language == "zh":
-            error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "请先运行 /start 以便我保存您宝宝的个人资料。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
 
     args = context.args or []
     if len(args) < 2:
         usage = "Use /regenerate <day> <slot>, for example: /regenerate wed lunch"
         if language == "zh":
-            usage = "Usa /regenerate <día> <comida>, por ejemplo: /regenerate wed lunch"
-        await update.message.reply_text(usage, reply_markup=main_menu_markup())
+            usage = "使用方法：/regenerate <星期> <时段>，例如：/regenerate wed lunch"
+        await update.message.reply_text(usage, reply_markup=main_menu_markup(language, user.id))
         return
 
     day_key = normalize_day(args[0])
@@ -3960,8 +4019,8 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not day_key or not slot_key:
         error_msg = "Please use a day (Mon-Sun) and slot (breakfast, lunch, dinner, snack1, snack2)."
         if language == "zh":
-            error_msg = "Por favor usa un día (Mon-Sun) y comida (breakfast, lunch, dinner, snack1, snack2)."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "请使用星期（Mon-Sun）和时段（breakfast、lunch、dinner、snack1、snack2）。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
 
     week_start = week_start_for_plans(date.today())
@@ -3969,8 +4028,8 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not existing:
         error_msg = "I need a weekly plan first. Tap Weekly plan to build one."
         if language == "zh":
-            error_msg = "Primero necesito un plan semanal. Toca Plan semanal para crear uno."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "我需要先有一个每周计划。点击\"每周计划\"来创建一个。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
 
     try:
@@ -3978,8 +4037,8 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except Exception:
         error_msg = "I couldn't read your current plan. Tap Weekly plan to refresh it."
         if language == "zh":
-            error_msg = "No pude leer tu plan actual. Toca Plan semanal para actualizzarlo."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "我无法读取您的当前计划。点击\"每周计划\"来刷新。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
 
     await update.message.chat.send_action("typing")
@@ -4005,8 +4064,8 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not normalized_meal:
         error_msg = "I couldn't safely regenerate that meal right now. Please try again."
         if language == "zh":
-            error_msg = "No pude regenerar esa comida de manera segura ahora. Intenta de nuevo."
-        await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
+            error_msg = "我现在无法安全地重新生成该餐食。请重试。"
+        await update.message.reply_text(error_msg, reply_markup=main_menu_markup(language, user.id))
         return
 
     # Show the new meal with accept/revert inline keyboard
@@ -4129,7 +4188,7 @@ async def handle_rate_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     # Show confirmation toast
     toast = "👍 Saved!" if direction == "up" else ("👎 Noted" if direction == "down" else "⭐ Skip recorded")
     if language == "zh":
-        toast = "👍 ¡Guardado!" if direction == "up" else ("👎 Recibido" if direction == "down" else "⭐ Omitido")
+        toast = "👍 已保存！" if direction == "up" else ("👎 已记录" if direction == "down" else "⭐ 已跳过")
     await query.answer(toast, show_alert=False)
 
     # Refresh the day detail view
@@ -4275,9 +4334,9 @@ async def handle_allergen_journal_callback(update: Update, context: ContextTypes
     if data == "aj_new":
         prompt = "Which allergen would you like to log? (e.g., egg, peanut, milk)"
         if language == "zh":
-            prompt = "¿Qué alérgeno te gustaría registrar? (ej., huevo, maní, leche)"
+            prompt = "您想记录哪种过敏原？（例如：鸡蛋、花生、牛奶）"
         await query.edit_message_text(
-            f"🥜 {prompt}\n\nOr use /introduce <alérgeno>",
+            f"🥜 {prompt}\n\nOr use /introduce <allergen>",
             reply_markup=build_allergen_journal_keyboard(language),
         )
         return
@@ -4292,7 +4351,7 @@ async def handle_allergen_journal_callback(update: Update, context: ContextTypes
         allergen_cap = allergen.capitalize()
         msg = f"✅ {allergen_cap} quick-logged!"
         if language == "zh":
-            msg = f"✅ {allergen_cap} registrado rápidamente."
+            msg = f"✅ {allergen_cap} 快速记录完成！"
         await query.answer(msg, show_alert=True)
         # Refresh journal
         profile = get_profile(user.id)
@@ -4378,7 +4437,7 @@ async def handle_slot_action_callback(update: Update, context: ContextTypes.DEFA
         upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
         msg = f"🗑️ Cleared {day_label} {slot_label}."
         if language == "zh":
-            msg = f"🗑️ Eliminado {day_label} {slot_label}."
+            msg = f"🗑️ 已清除 {day_label} {slot_label}。"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("\u2190 Back to week", callback_data="fullweek")],
         ])
