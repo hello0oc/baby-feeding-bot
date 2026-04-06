@@ -414,7 +414,7 @@ def safety_check_meal(
         severity = "block"
         warnings.append(
             "BLOCKED: Contains unsafe ingredient(s) for babies/toddlers."
-            if language != "es"
+            if language != "zh"
             else "BLOQUEADO: Contiene ingrediente(s) no seguros para bebés."
         )
 
@@ -431,7 +431,7 @@ def safety_check_meal(
                     blocked_terms.append(allergen_word)
                 warnings.append(
                     f"BLOCKED: Contains '{allergen_word}' which is in baby's allergen list."
-                    if language != "es"
+                    if language != "zh"
                     else f"BLOQUEADO: Contiene '{allergen_word}' que está en la lista de alérgenos."
                 )
 
@@ -448,7 +448,7 @@ def safety_check_meal(
                 warnings.append(
                     f"Warning: Contains '{allergen}' which hasn't been formally introduced yet. "
                     "Consider introducing it separately first."
-                    if language != "es"
+                    if language != "zh"
                     else f"Advertencia: Contiene '{allergen}' que aún no se ha introducido formalmente. "
                     "Considere introducirlo por separado primero."
                 )
@@ -462,7 +462,7 @@ def safety_check_meal(
             severity = "block"
             warnings.append(
                 "BLOCKED: Honey is never safe for babies under 12 months (infant botulism risk)."
-                if language != "es"
+                if language != "zh"
                 else "BLOQUEADO: La miel nunca es segura para bebés menores de 12 meses (riesgo de botulismo infantil)."
             )
 
@@ -470,7 +470,7 @@ def safety_check_meal(
     if _contains_high_sodium(ingredients):
         warnings.append(
             "High-sodium ingredient detected. For baby, use low-sodium alternatives where possible."
-            if language != "es"
+            if language != "zh"
             else "Ingrediente con alto contenido de sodio detectado. Para el bebé, use alternativas con bajo sodio cuando sea posible."
         )
 
@@ -483,7 +483,7 @@ def safety_check_meal(
             warnings.append(
                 f"Safety note indicates high sodium ({sodium_mg:.0f}mg). "
                 f"Consider reducing for baby's age ({age_months}mo)."
-                if language != "es"
+                if language != "zh"
                 else f"La nota de seguridad indica alto sodio ({sodium_mg:.0f}mg). "
                 f"Considere reducir para la edad del bebé ({age_months} meses)."
             )
@@ -730,7 +730,7 @@ def format_inspiration_summary(summary: str) -> str:
 
 def render_adaptation_card(index: int, adaptation: str, language: str = "en") -> str:
     lines = compact_lines(adaptation)
-    option_label = f"Option {index}" if language == "en" else f"Opción {index}"
+    option_label = f"Option {index}" if language == "en" else f"选项 {index}"
     if not lines:
         return f"━━━━━━━━━━━━━━━━━━━━\n{option_label}\n  Generating..."
     # Detect error-like content
@@ -845,7 +845,7 @@ def build_day_detail_keyboard(day_key: str, language: str = "en") -> InlineKeybo
 
 
 def render_inspiration_message(summary: str, adaptations: List[str], language: str = "en") -> tuple[str, InlineKeyboardMarkup]:
-    intro = "Here's what I found:" if language == "en" else "Esto es lo que encontré:"
+    intro = "Here's what I found:" if language == "en" else "这是我找到的内容："
     option_prompt = 'Tap "Option 1" or "Option 2" below to choose, then pick a day and meal slot.'
     sections = [
         "✨ Saved your inspiration!",
@@ -918,7 +918,7 @@ def generate_nutrition_summary(plan: dict[str, Any], age_months: int = 12, langu
     Generate a simple nutrition summary paragraph for a weekly plan.
     Checks iron, calcium, protein tags against approximate targets.
     """
-    header = "📊 Nutrition Summary" if language == "en" else "📊 Resumen Nutricional"
+    header = "📊 Nutrition Summary" if language == "en" else "📊 营养摘要"
 
     iron_tags = {"iron-rich", "iron"}
     cal_tags = {"calcium", "calcium-rich"}
@@ -988,7 +988,7 @@ def generate_nutrition_summary(plan: dict[str, Any], age_months: int = 12, langu
 
     lines.append("")
     tip = "💡 Tip: Serve iron-rich foods with vitamin C (e.g., strawberry with fortified cereal) to boost absorption."
-    if language == "es":
+    if language == "zh":
         tip = "💡 Consejo: Sirve alimentos ricos en hierro con vitamina C (ej., fresa con cereal fortificado) para mejorar la absorción."
     lines.append(tip)
     return "\n".join(lines)
@@ -1020,8 +1020,6 @@ def render_day_detail(
     day_label = _localized_day_label(day_key, language)
     no_data_map = {
         "en": f"No data for {day_label}.",
-        "es": f"Sin datos para {day_label}.",
-        "de": f"Keine Daten für {day_label}.",
         "zh": f"{day_label} 无数据。",
     }
     day = plan.get("days", {}).get(day_key)
@@ -1046,10 +1044,6 @@ def _day_buttons_for_language(language: str) -> List[InlineKeyboardButton]:
     day_map = {
         "en": [("day_mon", "Mon"), ("day_tue", "Tue"), ("day_wed", "Wed"),
                ("day_thu", "Thu"), ("day_fri", "Fri"), ("day_sat", "Sat"), ("day_sun", "Sun")],
-        "es": [("day_mon", "Lun"), ("day_tue", "Mar"), ("day_wed", "Mié"),
-               ("day_thu", "Jue"), ("day_fri", "Vie"), ("day_sat", "Sáb"), ("day_sun", "Dom")],
-        "de": [("day_mon", "Mo"), ("day_tue", "Di"), ("day_wed", "Mi"),
-               ("day_thu", "Do"), ("day_fri", "Fr"), ("day_sat", "Sa"), ("day_sun", "So")],
         "zh": [("day_mon", "周一"), ("day_tue", "周二"), ("day_wed", "周三"),
                ("day_thu", "周四"), ("day_fri", "周五"), ("day_sat", "周六"), ("day_sun", "周日")],
     }
@@ -1065,9 +1059,9 @@ def _day_buttons_for_language(language: str) -> List[InlineKeyboardButton]:
 def build_weekly_plan_keyboard(language: str = "en") -> InlineKeyboardMarkup:
     """Day picker for weekly plan — Mon, Tue, ... Sun + Full week + Nutrition."""
     first_four, last_three = _day_buttons_for_language(language)
-    fullweek_labels = {"en": "📋 Full week", "es": "📋 Toda la semana", "de": "📋 Ganze Woche", "zh": "📋 完整周"}
-    nutrition_labels = {"en": "📊 Nutrition", "es": "📊 Nutrición", "de": "📊 Nährwerte", "zh": "📊 营养"}
-    save_labels = {"en": "💾 Save plan", "es": "💾 Guardar plan", "de": "💾 Speichern", "zh": "💾 保存计划"}
+    fullweek_labels = {"en": "📋 Full week", "zh": "📋 完整周"}
+    nutrition_labels = {"en": "📊 Nutrition", "zh": "📊 营养"}
+    save_labels = {"en": "💾 Save plan", "zh": "💾 保存计划"}
 
     rows: List[List[InlineKeyboardButton]] = [
         first_four,
@@ -1076,8 +1070,6 @@ def build_weekly_plan_keyboard(language: str = "en") -> InlineKeyboardMarkup:
         [InlineKeyboardButton(nutrition_labels.get(language, nutrition_labels["en"]),
                                callback_data="nutrition"),
          InlineKeyboardButton("🌐 EN", callback_data="lang:en"),
-         InlineKeyboardButton("ES", callback_data="lang:es"),
-         InlineKeyboardButton("DE", callback_data="lang:de"),
          InlineKeyboardButton("ZH", callback_data="lang:zh")],
         [InlineKeyboardButton(save_labels.get(language, save_labels["en"]),
                               callback_data="saveplan")],
@@ -1089,10 +1081,6 @@ def _localized_day_label(day_key: str, language: str) -> str:
     labels = {
         "en": {"mon": "Mon", "tue": "Tue", "wed": "Wed", "thu": "Thu",
                "fri": "Fri", "sat": "Sat", "sun": "Sun"},
-        "es": {"mon": "Lun", "tue": "Mar", "wed": "Mié", "thu": "Jue",
-               "fri": "Vie", "sat": "Sáb", "sun": "Dom"},
-        "de": {"mon": "Mo", "tue": "Di", "wed": "Mi", "thu": "Do",
-               "fri": "Fr", "sat": "Sa", "sun": "So"},
         "zh": {"mon": "周一", "tue": "周二", "wed": "周三", "thu": "周四",
                "fri": "周五", "sat": "周六", "sun": "周日"},
     }
@@ -1123,10 +1111,10 @@ def render_weekly_plan_digest(
     """
     days = plan.get("days") or {}
     if not days:
-        return "No meals planned yet." if language == "en" else "Aún no hay comidas planificadas."
+        return "No meals planned yet." if language == "en" else "暂无计划。"
 
     lines: List[str] = []
-    no_plan = "No meals planned yet." if language == "en" else "Aún no hay comidas planificadas."
+    no_plan = "No meals planned yet." if language == "en" else "暂无计划。"
 
     for day_key, day_label in DAY_LABELS.items():
         day = days.get(day_key)
@@ -1214,8 +1202,8 @@ def render_single_meal(day_key: str, slot_key: str, meal: dict[str, Any], langua
 
 def render_history_message(plans: List[dict[str, Any]], inspirations: List[dict[str, Any]], language: str = "en") -> str:
     """Digest-format history: one line per plan week, one line per inspiration."""
-    plans_header = "📚 Recent Plans" if language == "en" else "📚 Planes Recientes"
-    inspirations_header = "💡 Recent Inspirations" if language == "en" else "💡 Inspiraciones Recientes"
+    plans_header = "📚 Recent Plans" if language == "en" else "📚 最近的计划"
+    inspirations_header = "💡 Recent Inspirations" if language == "en" else "💡 最近的灵感"
     no_plans = "No weekly plans yet." if language == "en" else "Aún no hay planes semanales."
     no_inspirations = "No saved inspirations yet." if language == "en" else "Aún no hay inspiraciones guardadas."
 
@@ -1248,7 +1236,7 @@ def _render_shopping_list_from_json(raw: str, language: str = "en") -> str:
     Parse LLM JSON response and render as formatted shopping list.
     Falls back to stripped text if JSON parsing fails.
     """
-    header = "🛒 Shopping List" if language == "en" else "🛒 Lista de Compras"
+    header = "🛒 Shopping List" if language == "en" else "🛒 购物清单"
     try:
         # Strip markdown code fences
         cleaned = re.sub(r"```(?:json)?\s*", "", raw.strip()).strip()
@@ -1840,13 +1828,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not update.message:
         return
     language = get_user_language(update.effective_user.id, update.effective_user.language_code or "en")
-    if language == "es":
+    if language == "zh":
         help_text = (
-            "Aquí te ayudo:\n\n"
-            "1. Envía una foto de comida, un enlace o una idea de comida.\n"
-            "2. Te daré opciones seguras para tu bebé.\n"
-            "3. Responde con algo como \"Use 1 for Wednesday dinner\" para añadirlo al plan.\n\n"
-            "Usa los botones del menú para ver tu plan semanal, lista de compras, historial y más."
+            "使用方法：\n\n"
+            "1. 发送食物照片、链接或餐饮想法。\n"
+            "2. 我会将其转化为适合宝宝的安全选项。\n"
+            "3. 回复例如\"选择1作为周三晚餐\"将其添加到计划中。\n\n"
+            "也可以使用下方菜单按钮查看每周计划、购物清单、历史记录和更新资料。"
         )
     else:
         help_text = (
@@ -1871,11 +1859,11 @@ async def analyze_image_for_inspiration(image_bytes: bytes, *, language: str) ->
     buffered = BytesIO()
     img.save(buffered, format="JPEG", quality=85)
     img_str = base64.b64encode(buffered.getvalue()).decode()
-    if language == "es":
+    if language == "zh":
         prompt = (
             "Describe the food shown and extract a short theme I can use as a meal inspiration.\n"
             "Return 2-3 bullet points.\n"
-            "Respond in language: Spanish"
+            "Respond in language: Chinese"
         )
     else:
         prompt = (
@@ -1991,7 +1979,7 @@ async def generate_meal_for_slot(
     nutritional information rather than LLM hallucination.
     """
     system = MEAL_SYSTEM_PROMPT
-    if language == "es":
+    if language == "zh":
         system = system.replace("You are a helpful assistant", "Eres un asistente útil")
 
     age_safety = age_safety_rules_text(profile)
@@ -2036,7 +2024,7 @@ async def generate_meal_for_slot(
 
 async def generate_two_adaptations(*, inspiration: str, profile: Optional[dict[str, Any]], language: str) -> List[str]:
     system = MEAL_SYSTEM_PROMPT
-    if language == "es":
+    if language == "zh":
         system = system.replace("You are a helpful assistant", "Eres un asistente útil")
 
     age_safety = age_safety_rules_text(profile)
@@ -2155,7 +2143,7 @@ async def generate_weekly_plan(
 ) -> dict[str, Any]:
     inspiration_text = "\n".join([f"- {i.get('summary', '')}".strip() for i in inspirations if i.get("summary")]) or "none"
     system = MEAL_SYSTEM_PROMPT
-    if language == "es":
+    if language == "zh":
         system = system.replace("You are a helpful assistant", "Eres un asistente útil")
 
     age_safety = age_safety_rules_text(profile)
@@ -2246,7 +2234,7 @@ def _safety_sweep_plan(
                 ).copy()
                 fallback["safety_note"] = (
                     "[Auto-fallback after safety review — consult pediatrician]"
-                    if language != "es"
+                    if language != "zh"
                     else "[Sustitución automática tras revisión de seguridad — consulte al pediatra]"
                 )
                 day_data[slot_key] = fallback
@@ -2295,10 +2283,10 @@ async def generate_shopping_list(*, plan_json: dict[str, Any], language: str, te
     dedup_text = "\n".join(dedup_lines) or "No ingredients found."
 
     system = MEAL_SYSTEM_PROMPT
-    if language == "es":
+    if language == "zh":
         system = system.replace("You are a helpful assistant", "Eres un asistente útil")
 
-    lang = "Spanish" if language == "es" else "English"
+    lang = "Spanish" if language == "zh" else "English"
     prompt = (
         "You are a shopping list generator for a baby food meal plan.\n"
         "Given the ingredients below (already deduplicated), create a clean shopping list.\n"
@@ -2409,7 +2397,7 @@ async def _safety_checked_generate_meal(
     fallback = SAFE_FALLBACK_MEALS.get(slot_key, SAFE_FALLBACK_MEALS["lunch"]).copy()
     fallback["safety_note"] = (
         "[Auto-generated safe fallback — consult pediatrician for dietary advice]"
-        if language != "es"
+        if language != "zh"
         else "[Opción segura generada automáticamente — consulte al pediatra]"
     )
     logger.warning(
@@ -2522,7 +2510,7 @@ async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     InlineKeyboardButton("✏️ Edit", callback_data=f"edit:{day_key}:{slot_key}"),
                 ]
                 keyboard_rows.append(row)
-            back_labels = {"en": "← Back to week", "es": "← Volver a la semana", "de": "← Zurück zur Woche", "zh": "← 返回周视图"}
+            back_labels = {"en": "← Back to week", "zh": "← 返回周视图"}
             keyboard_rows.append([InlineKeyboardButton(back_labels.get(language, back_labels["en"]),
                                                         callback_data="fullweek")])
             keyboard = InlineKeyboardMarkup(keyboard_rows)
@@ -2540,15 +2528,11 @@ async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         if data == "fullweek":
             week_label_map = {
                 "en": f"Week of {week_start.isoformat()}",
-                "es": f"Semana del {week_start.isoformat()}",
-                "de": f"Woche vom {week_start.isoformat()}",
                 "zh": f"周 {week_start.isoformat()}",
             }
             week_label = week_label_map.get(language, week_label_map["en"])
             tip_map = {
                 "en": "\n\n💡 Tap a day to expand →",
-                "es": "\n\n💡 Toca un día para expandir →",
-                "de": "\n\n💡 Tippe auf einen Tag zum Erweitern →",
                 "zh": "\n\n💡 点击日期展开详情 →",
             }
             tip = tip_map.get(language, tip_map["en"])
@@ -2578,7 +2562,7 @@ async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception as e:
                 err_str = str(e).lower()
                 if "not modified" in err_str:
-                    await query.answer("Plan already saved", show_alert=False)
+                    await query.answer("计划已保存", show_alert=False)
                 else:
                     logger.error("Error editing saveplan message: %s", e)
                     await query.answer("Error saving plan", show_alert=True)
@@ -2827,7 +2811,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         context.user_data["awaiting_age_update"] = True
         context.user_data.pop("awaiting_allergies_update", None)
         prompt = "Please send your baby's age in months, for example: 12"
-        if language == "es":
+        if language == "zh":
             prompt = "Por favor envía la edad de tu bebé en meses, por ejemplo: 12"
         await update.message.reply_text(prompt, reply_markup=main_menu_markup())
         return
@@ -2835,7 +2819,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         context.user_data["awaiting_allergies_update"] = True
         context.user_data.pop("awaiting_age_update", None)
         prompt = "Please send allergies as a comma-separated list, or reply with none."
-        if language == "es":
+        if language == "zh":
             prompt = "Por favor envía las alergias como una lista separada por comas, o responde con none."
         await update.message.reply_text(prompt, reply_markup=main_menu_markup())
         return
@@ -2843,11 +2827,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await allergen_journal_command(update, context)
         return
     if action == "toggle_lang":
-        # Toggle language
-        new_lang = "es" if language == "en" else "en"
+        # Toggle language: EN <-> ZH
+        new_lang = "zh" if language == "en" else "en"
         with _db_conn() as conn:
             conn.execute("UPDATE users SET preferred_language = ? WHERE telegram_user_id = ?", (new_lang, user.id))
-        msg = "Language set to English." if new_lang == "en" else "Idioma configurado a Español."
+        msg = "Language set to English." if new_lang == "en" else "语言已设置为中文。"
         await update.message.reply_text(msg, reply_markup=main_menu_markup())
         return
     if action == "profile":
@@ -2858,7 +2842,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if context.user_data.pop("awaiting_age_update", False):
         if not profile:
             error_msg = "Please run /start first so I can save your profile."
-            if language == "es":
+            if language == "zh":
                 error_msg = "Por favor usa /start primero para guardar tu perfil."
             await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
             return
@@ -2870,14 +2854,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             preferred_language=language,
         )
         response = f"Updated age to {age_months} months."
-        if language == "es":
+        if language == "zh":
             response = f"Edad actualizada a {age_months} meses."
         await update.message.reply_text(response, reply_markup=main_menu_markup())
         return
     if context.user_data.pop("awaiting_allergies_update", False):
         if not profile:
             error_msg = "Please run /start first so I can save your profile."
-            if language == "es":
+            if language == "zh":
                 error_msg = "Por favor usa /start primero para guardar tu perfil."
             await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
             return
@@ -2889,7 +2873,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             preferred_language=language,
         )
         response = f"Updated allergies to: {allergies}."
-        if language == "es":
+        if language == "zh":
             response = f"Alergias actualizadas a: {allergies}."
         await update.message.reply_text(response, reply_markup=main_menu_markup())
         return
@@ -2898,7 +2882,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         option_number, day_key, slot_key = quick_apply
         if not profile:
             error_msg = "Please run /start first so I can create your profile."
-            if language == "es":
+            if language == "zh":
                 error_msg = "Por favor usa /start primero para crear tu perfil."
             await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
             return
@@ -2906,7 +2890,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         inspiration = get_inspiration(user.id, int(inspiration_id)) if inspiration_id else get_latest_inspiration(user.id)
         if not inspiration:
             error_msg = "I don't have a recent inspiration to place yet. Send a photo, link, or meal idea first."
-            if language == "es":
+            if language == "zh":
                 error_msg = "No tengo una inspiración reciente para colocar. Envía una foto, enlace o idea de comida primero."
             await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
             return
@@ -2914,7 +2898,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         existing = get_weekly_plan(user.id, week_start=week_start)
         if not existing:
             error_msg = "I need a weekly plan first. Tap Weekly plan and I'll build one for you."
-            if language == "es":
+            if language == "zh":
                 error_msg = "Primero necesito un plan semanal. Toca Plan semanal y yo crearé uno para ti."
             await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
             return
@@ -2922,7 +2906,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
         except Exception:
             error_msg = "I couldn't read your current plan. Tap Weekly plan to refresh it."
-            if language == "es":
+            if language == "zh":
                 error_msg = "No pude leer tu plan actual. Toca Plan semanal para actualizzarlo."
             await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
             return
@@ -2939,7 +2923,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         if not normalized_meal:
             error_msg = "I couldn't safely turn that idea into a meal right now. Please try another idea or regenerate the weekly plan."
-            if language == "es":
+            if language == "zh":
                 error_msg = "No pude convertir esa idea en una comida ahora. Prueba con otra idea o regenera el plan semanal."
             await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
             return
@@ -3004,7 +2988,7 @@ async def onboarding_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             "• Send a new photo or meal idea\n\n"
             "You can also reply with a message like \"Use 1 for Wednesday dinner\" after I suggest meal options."
         )
-        if user.language_code == "es":
+        if user.language_code == "zh":
             welcome = (
                 "¡Bienvenido de vuelta 👋\n\n"
                 "¿Qué te gustaría hacer hoy?\n"
@@ -3029,7 +3013,7 @@ async def onboarding_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "To get started, how old is your baby in months?\n"
         "(Reply with a number, or send skip to use 12 months)"
     )
-    if locale == "es":
+    if locale == "zh":
         intro = (
             "¡Hola! Soy tu asistente de alimentación infantil 🍼\n\n"
             "Te ayudo a:\n"
@@ -3052,7 +3036,7 @@ async def onboarding_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "Any allergies or foods to avoid?\n"
         "Reply with a comma-separated list, or send none."
     )
-    if context.user_data.get("onboarding_language") == "es":
+    if context.user_data.get("onboarding_language") == "zh":
         prompt = (
             "¿Alguna alergia o alimento a evitar?\n"
             "Responde con una lista separada por comas, o envía none."
@@ -3077,7 +3061,7 @@ async def onboarding_allergies(update: Update, context: ContextTypes.DEFAULT_TYP
         "Next, send a food photo, a link, or a meal idea and I'll turn it into baby-friendly options.\n"
         "When you're ready, tap Weekly plan to build next week's schedule."
     )
-    if preferred_language == "es":
+    if preferred_language == "zh":
         ready = (
             "¡Todo listo ✨\n\n"
             "A continuación, envía una foto de comida, un enlace o una idea de comida y la convertiré en opciones seguras para bebés.\n"
@@ -3098,14 +3082,14 @@ async def set_age_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     profile = get_profile(user.id)
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
     args = context.args or []
     if not args:
         usage = "Use /set_age <months>, for example: /set_age 12"
-        if language == "es":
+        if language == "zh":
             usage = "Usa /set_age <meses>, por ejemplo: /set_age 12"
         await update.message.reply_text(usage, reply_markup=main_menu_markup())
         return
@@ -3117,7 +3101,7 @@ async def set_age_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         preferred_language=language,
     )
     response = f"Updated age to {age_months} months."
-    if language == "es":
+    if language == "zh":
         response = f"Edad actualizada a {age_months} meses."
     await update.message.reply_text(response, reply_markup=main_menu_markup())
 
@@ -3133,14 +3117,14 @@ async def set_allergies_command(update: Update, context: ContextTypes.DEFAULT_TY
     profile = get_profile(user.id)
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
     args = context.args or []
     if not args:
         usage = "Use /set_allergies <comma-separated>, or /set_allergies none"
-        if language == "es":
+        if language == "zh":
             usage = "Usa /set_allergies <separados por comas>, o /set_allergies none"
         await update.message.reply_text(usage, reply_markup=main_menu_markup())
         return
@@ -3152,7 +3136,7 @@ async def set_allergies_command(update: Update, context: ContextTypes.DEFAULT_TY
         preferred_language=language,
     )
     response = f"Updated allergies to: {allergies}."
-    if language == "es":
+    if language == "zh":
         response = f"Alergias actualizadas a: {allergies}."
     await update.message.reply_text(response, reply_markup=main_menu_markup())
 
@@ -3169,14 +3153,10 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Localized strings
     err_no_profile = {
         "en": "Please run /start first so I can save your baby's profile.",
-        "es": "Por favor usa /start primero para guardar el perfil de tu bebé.",
-        "de": "Bitte starte zuerst /start, damit ich das Profil deines Babys speichern kann.",
         "zh": "请先运行 /start 以便我保存您宝宝的个人资料。",
     }
     err_no_plan = {
         "en": "I couldn't build a reliable weekly plan right now. Please try again or send a fresh meal idea first.",
-        "es": "No pude crear un plan semanal ahora. Por favor intenta de nuevo o envía una nueva idea.",
-        "de": "Ich konnte keinen zuverlässigen Wochenplan erstellen. Bitte versuche es erneut oder sende eine neue Idee.",
         "zh": "我现在无法制定可靠的每周计划。请重试或发送新的餐饮想法。",
     }
 
@@ -3199,14 +3179,10 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         if plan_has_content(plan_obj):
             week_label_map = {
                 "en": f"Week of {week_start.isoformat()}",
-                "es": f"Semana del {week_start.isoformat()}",
-                "de": f"Woche vom {week_start.isoformat()}",
                 "zh": f"周 {week_start.isoformat()}",
             }
             tip_map = {
                 "en": "\n\n💡 Tap a day to expand →",
-                "es": "\n\n💡 Toca un día para expandir →",
-                "de": "\n\n💡 Tippe auf einen Tag zum Erweitern →",
                 "zh": "\n\n💡 点击日期展开详情 →",
             }
             week_label = week_label_map.get(language, week_label_map["en"])
@@ -3217,8 +3193,6 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             if stats and stats.get("total_meals", 0) >= 3:
                 footer_map = {
                     "en": f"\n\nYou've rated {stats['total_meals']} meals — shall I factor your preferences into next week's plan?",
-                    "es": f"\n\nHas valorado {stats['total_meals']} comidas. ¿Tengo en cuenta tus preferencias para el próximo plan?",
-                    "de": f"\n\nDu hast {stats['total_meals']} Mahlzeiten bewertet — soll ich deine Präferenzen in den nächsten Plan einbeziehen?",
                     "zh": f"\n\n您已评价 {stats['total_meals']} 餐 — 我是否将您的偏好纳入下周计划？",
                 }
                 footer = footer_map.get(language, footer_map["en"])
@@ -3244,14 +3218,10 @@ async def weekly_plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
     week_label_map = {
         "en": f"Week of {week_start.isoformat()}",
-        "es": f"Semana del {week_start.isoformat()}",
-        "de": f"Woche vom {week_start.isoformat()}",
         "zh": f"周 {week_start.isoformat()}",
     }
     tip_map = {
         "en": "\n\n💡 Tap a day to expand →",
-        "es": "\n\n💡 Toca un día para expandir →",
-        "de": "\n\n💡 Tippe auf einen Tag zum Erweitern →",
         "zh": "\n\n💡 点击日期展开详情 →",
     }
     week_label = week_label_map.get(language, week_label_map["en"])
@@ -3274,7 +3244,7 @@ async def shopping_list_command(update: Update, context: ContextTypes.DEFAULT_TY
     profile = get_profile(user.id)
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3282,7 +3252,7 @@ async def shopping_list_command(update: Update, context: ContextTypes.DEFAULT_TY
     existing = get_weekly_plan(user.id, week_start=week_start)
     if not existing:
         error_msg = "I need a weekly plan first. Tap Weekly plan and I'll build one for you."
-        if language == "es":
+        if language == "zh":
             error_msg = "Primero necesito un plan semanal. Toca Plan semanal y yo crearé uno para ti."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3290,13 +3260,13 @@ async def shopping_list_command(update: Update, context: ContextTypes.DEFAULT_TY
         plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
     except Exception:
         error_msg = "I couldn't read your saved plan. Tap Weekly plan to refresh it."
-        if language == "es":
+        if language == "zh":
             error_msg = "No pude leer tu plan guardado. Toca Plan semanal para actualizzarlo."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
     if not plan_has_content(plan_obj):
         error_msg = "Your saved plan looks incomplete. Tap Weekly plan to rebuild it."
-        if language == "es":
+        if language == "zh":
             error_msg = "Tu plan guardado parece incompleto. Toca Plan semanal para reconstruirlo."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3330,7 +3300,7 @@ async def allergen_journal_command(update: Update, context: ContextTypes.DEFAULT
     profile = get_profile(user.id)
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3390,7 +3360,7 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     profile = get_profile(user.id)
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3398,7 +3368,7 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     args = context.args or []
     if not args:
         usage = "Use /introduce <allergen> [reactions], for example: /introduce peanut or /introduce egg mild rash"
-        if language == "es":
+        if language == "zh":
             usage = "Usa /introduce <alérgeno> [reacciones], por ejemplo: /introduce maní o /introduce huevo sarpullido leve"
         await update.message.reply_text(usage, reply_markup=main_menu_markup())
         return
@@ -3421,7 +3391,7 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     # Validate against track list
     if allergen not in ALLERGEN_TRACK_LIST:
         invalid = f"'{allergen}' is not in the tracking list. Trackable allergens: {', '.join(ALLERGEN_TRACK_LIST)}"
-        if language == "es":
+        if language == "zh":
             invalid = f"'{allergen}' no está en la lista. Alérgenos rastreables: {', '.join(ALLERGEN_TRACK_LIST)}"
         await update.message.reply_text(invalid, reply_markup=main_menu_markup())
         return
@@ -3435,7 +3405,7 @@ async def introduce_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if was_new:
         msg = f"✅ Logged first introduction of {allergen_cap} on {now_str}."
         note = "\n\n💡 Tip: Serve a small amount and wait 3-4 days before introducing another new allergen."
-        if language == "es":
+        if language == "zh":
             msg = f"✅ Registrada primera introducción de {allergen_cap} el {now_str}."
             note = "\n\n💡 Consejo: Sirve una pequeña cantidad y espera 3-4 días antes de introducir otro alérgeno nuevo."
         if reactions:
@@ -3464,7 +3434,7 @@ async def introduce_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     profile = get_profile(user.id)
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa /start primero para guardar tu perfil."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return ConversationHandler.END
@@ -3472,7 +3442,7 @@ async def introduce_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     args = context.args or []
     if not args:
         prompt = "Which allergen are you introducing? (e.g., egg, peanut, milk)"
-        if language == "es":
+        if language == "zh":
             prompt = "¿Qué alérgeno estás introduciendo? (ej., huevo, maní, leche)"
         await update.message.reply_text(prompt, reply_markup=main_menu_markup())
         return INTRODUCE_ALLERGEN
@@ -3481,7 +3451,7 @@ async def introduce_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     allergen = args[0].strip().lower()
     if allergen not in ALLERGEN_TRACK_LIST:
         invalid = f"'{allergen}' is not in the tracking list. Trackable: {', '.join(ALLERGEN_TRACK_LIST)}"
-        if language == "es":
+        if language == "zh":
             invalid = f"'{allergen}' no está en la lista. Rastreables: {', '.join(ALLERGEN_TRACK_LIST)}"
         await update.message.reply_text(invalid, reply_markup=main_menu_markup())
         return ConversationHandler.END
@@ -3493,7 +3463,7 @@ async def introduce_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         f"Logging: **{allergen.capitalize()}**\n\n"
         "How did it go? Tap a button below:"
     )
-    if language == "es":
+    if language == "zh":
         prompt = (
             f"Registrando: **{allergen.capitalize()}**\n\n"
             "¿Cómo fue? Toca un botón abajo:"
@@ -3524,7 +3494,7 @@ async def introduce_severity(update: Update, context: ContextTypes.DEFAULT_TYPE)
             update_allergen_intro(user.id, allergen, severity=severity, outcome=outcome)
             allergen_cap = allergen.capitalize()
             msg = f"✅ {allergen_cap} logged as tolerated!"
-            if language == "es":
+            if language == "zh":
                 msg = f"✅ {allergen_cap} registrado como tolerado."
             await query.edit_message_text(msg, reply_markup=None)
         return ConversationHandler.END
@@ -3542,7 +3512,7 @@ async def introduce_severity(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # Ask outcome
     prompt = f"Severity: **{severity}**\n\nWhat was the outcome?"
-    if language == "es":
+    if language == "zh":
         prompt = f"Severidad: **{severity}**\n\n¿Cuál fue el resultado?"
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Tolerated", callback_data="intro_outcome_save:tolerated")],
@@ -3570,7 +3540,7 @@ async def introduce_outcome(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         allergen = context.user_data.get("pending_allergen", "")
         context.user_data.pop("pending_severity", None)
         prompt = f"Logging: **{allergen.capitalize()}**\n\nHow did it go? Tap a button below:"
-        if language == "es":
+        if language == "zh":
             prompt = f"Registrando: **{allergen.capitalize()}**\n\n¿Cómo fue? Toca un botón abajo:"
         await query.edit_message_text(prompt, reply_markup=build_severity_keyboard(), parse_mode="Markdown")
         return INTRODUCE_SEVERITY
@@ -3589,7 +3559,7 @@ async def introduce_outcome(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         outcome_label = outcome.capitalize()
         severity_label = severity if severity != "unknown" else ""
         msg = f"✅ {allergen_cap} logged — {outcome_label}{(' (' + severity_label + ')') if severity_label else ''}!"
-        if language == "es":
+        if language == "zh":
             msg = f"✅ {allergen_cap} registrado — {outcome_label}{(' (' + severity_label + ')') if severity_label else ''}."
         await query.edit_message_text(msg, reply_markup=None)
         # Clear pending
@@ -3630,7 +3600,7 @@ async def introduce_text_fallback(update: Update, context: ContextTypes.DEFAULT_
             update_allergen_intro(user.id, allergen, severity=severity, outcome=outcome)
         allergen_cap = allergen.capitalize()
         msg = f"✅ {allergen_cap} logged — {severity or '?'} / {outcome or '?'}!"
-        if language == "es":
+        if language == "zh":
             msg = f"✅ {allergen_cap} registrado — {severity or '?'} / {outcome or '?'}."
         await update.message.reply_text(msg, reply_markup=main_menu_markup())
         context.user_data.pop("pending_allergen", None)
@@ -3657,7 +3627,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     for key in list(context.user_data.keys()):
         context.user_data[key] = None
     msg = "Cancelled. What would you like to do?"
-    if language == "es":
+    if language == "zh":
         msg = "Cancelado. ¿Qué te gustaría hacer?"
     await update.message.reply_text(msg, reply_markup=main_menu_markup())
 
@@ -3714,7 +3684,7 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     lines.append(f"📅 Weekly plans created: {plan_count}")
 
     footer = "\nUse the menu buttons or type a command to continue."
-    if language == "es":
+    if language == "zh":
         footer = "\nUsa los botones del menú o escribe un comando para continuar."
     lines.append(footer)
 
@@ -3759,7 +3729,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     lines.append("")
     lines.append("Keep using the bot to improve your meal plans! 💪")
-    if language == "es":
+    if language == "zh":
         lines[-1] = "¡Sigue usando el bot para mejorar tus planes de comidas! 💪"
 
     await update.message.reply_text("\n".join(lines), reply_markup=main_menu_markup())
@@ -3825,7 +3795,7 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     profile = get_profile(user.id)
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3835,7 +3805,7 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "Use /apply <inspiration_id> <day> <slot>, for example: /apply 12 mon dinner.\n"
             "A simpler option is to reply with \"Use 1 for Wednesday dinner\" after I suggest meal ideas."
         )
-        if language == "es":
+        if language == "zh":
             usage = (
                 "Usa /apply <inspiration_id> <día> <comida>, por ejemplo: /apply 12 mon dinner.\n"
                 "Una opción más simple es responder con \"Use 1 for Wednesday dinner\" después de que sugiera ideas de comida."
@@ -3846,7 +3816,7 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         inspiration_id = int(args[0])
     except Exception:
         error_msg = "I couldn't read that inspiration number."
-        if language == "es":
+        if language == "zh":
             error_msg = "No pude leer ese número de inspiración."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3854,14 +3824,14 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     slot_key = normalize_slot(args[2])
     if not day_key or not slot_key:
         error_msg = "Please use a day from Monday to Sunday and a slot like breakfast, lunch, dinner, snack1, or snack2."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa un día de lunes a domingo y una comida como breakfast, lunch, dinner, snack1, o snack2."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
     inspiration = get_inspiration(user.id, inspiration_id)
     if not inspiration:
         error_msg = "I couldn't find that saved inspiration."
-        if language == "es":
+        if language == "zh":
             error_msg = "No pude encontrar esa inspiración guardada."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3869,7 +3839,7 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     existing = get_weekly_plan(user.id, week_start=week_start)
     if not existing:
         error_msg = "I need a weekly plan first. Tap Weekly plan and I'll build one for you."
-        if language == "es":
+        if language == "zh":
             error_msg = "Primero necesito un plan semanal. Toca Plan semanal y yo crearé uno para ti."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3877,7 +3847,7 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
     except Exception:
         error_msg = "I couldn't read your saved plan. Tap Weekly plan to refresh it."
-        if language == "es":
+        if language == "zh":
             error_msg = "No pude leer tu plan guardado. Toca Plan semanal para actualizzarlo."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3893,7 +3863,7 @@ async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
     if not normalized_meal:
         error_msg = "I couldn't safely update that meal right now. Please try again with a different inspiration."
-        if language == "es":
+        if language == "zh":
             error_msg = "No pude actualizar esa comida de manera segura ahora. Por favor intenta de nuevo con una inspiración diferente."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3917,14 +3887,14 @@ async def rate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     profile = get_profile(user.id)
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
     args = context.args or []
     if len(args) < 2:
         usage = "Use /rate <meal_id> <up|down|0> [comment], for example: /rate tue.lunch up loved it"
-        if language == "es":
+        if language == "zh":
             usage = "Usa /rate <meal_id> <up|down|0> [comentario], por ejemplo: /rate tue.lunch up me encantó"
         await update.message.reply_text(usage, reply_markup=main_menu_markup())
         return
@@ -3939,7 +3909,7 @@ async def rate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         rating = 0
     else:
         error_msg = "Please rate with up, down, or 0."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor califica con up, down, o 0."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3948,7 +3918,7 @@ async def rate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     existing = get_weekly_plan(user.id, week_start=week_start)
     if not existing:
         error_msg = "I need a weekly plan first. Tap Weekly plan and I'll build one for you."
-        if language == "es":
+        if language == "zh":
             error_msg = "Primero necesito un plan semanal. Toca Plan semanal y yo crearé uno para ti."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3963,7 +3933,7 @@ async def rate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             (user.id, weekly_plan_id, meal_id, rating, comment, now),
         )
     response = "Saved your feedback. Thank you!"
-    if language == "es":
+    if language == "zh":
         response = "¡Guardado tu feedback. Gracias!"
     await update.message.reply_text(response, reply_markup=main_menu_markup())
 
@@ -3980,7 +3950,7 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     profile = get_profile(user.id)
     if not profile:
         error_msg = "Please run /start first so I can save your baby's profile."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa /start primero para guardar el perfil de tu bebé."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -3988,7 +3958,7 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     args = context.args or []
     if len(args) < 2:
         usage = "Use /regenerate <day> <slot>, for example: /regenerate wed lunch"
-        if language == "es":
+        if language == "zh":
             usage = "Usa /regenerate <día> <comida>, por ejemplo: /regenerate wed lunch"
         await update.message.reply_text(usage, reply_markup=main_menu_markup())
         return
@@ -3997,7 +3967,7 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     slot_key = normalize_slot(args[1])
     if not day_key or not slot_key:
         error_msg = "Please use a day (Mon-Sun) and slot (breakfast, lunch, dinner, snack1, snack2)."
-        if language == "es":
+        if language == "zh":
             error_msg = "Por favor usa un día (Mon-Sun) y comida (breakfast, lunch, dinner, snack1, snack2)."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -4006,7 +3976,7 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     existing = get_weekly_plan(user.id, week_start=week_start)
     if not existing:
         error_msg = "I need a weekly plan first. Tap Weekly plan to build one."
-        if language == "es":
+        if language == "zh":
             error_msg = "Primero necesito un plan semanal. Toca Plan semanal para crear uno."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -4015,7 +3985,7 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         plan_obj = normalize_plan_dict(json.loads(str(existing["plan_json"])), week_start=week_start)
     except Exception:
         error_msg = "I couldn't read your current plan. Tap Weekly plan to refresh it."
-        if language == "es":
+        if language == "zh":
             error_msg = "No pude leer tu plan actual. Toca Plan semanal para actualizzarlo."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -4042,7 +4012,7 @@ async def regenerate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     if not normalized_meal:
         error_msg = "I couldn't safely regenerate that meal right now. Please try again."
-        if language == "es":
+        if language == "zh":
             error_msg = "No pude regenerar esa comida de manera segura ahora. Intenta de nuevo."
         await update.message.reply_text(error_msg, reply_markup=main_menu_markup())
         return
@@ -4166,7 +4136,7 @@ async def handle_rate_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # Show confirmation toast
     toast = "👍 Saved!" if direction == "up" else ("👎 Noted" if direction == "down" else "⭐ Skip recorded")
-    if language == "es":
+    if language == "zh":
         toast = "👍 ¡Guardado!" if direction == "up" else ("👎 Recibido" if direction == "down" else "⭐ Omitido")
     await query.answer(toast, show_alert=False)
 
@@ -4281,7 +4251,7 @@ async def handle_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if not data.startswith("lang:"):
         return
     new_lang = data.split(":", 1)[1]
-    if new_lang not in ("en", "es", "de", "zh"):
+    if new_lang not in ("en", "zh"):
         return
 
     with _db_conn() as conn:
@@ -4291,8 +4261,6 @@ async def handle_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         )
     lang_msgs = {
         "en": "Language set to English.",
-        "es": "Idioma configurado a Español.",
-        "de": "Sprache auf Deutsch gestellt.",
         "zh": "语言已设置为中文。",
     }
     msg = lang_msgs.get(new_lang, "Language updated.")
@@ -4314,7 +4282,7 @@ async def handle_allergen_journal_callback(update: Update, context: ContextTypes
 
     if data == "aj_new":
         prompt = "Which allergen would you like to log? (e.g., egg, peanut, milk)"
-        if language == "es":
+        if language == "zh":
             prompt = "¿Qué alérgeno te gustaría registrar? (ej., huevo, maní, leche)"
         await query.edit_message_text(
             f"🥜 {prompt}\n\nOr use /introduce <alérgeno>",
@@ -4331,7 +4299,7 @@ async def handle_allergen_journal_callback(update: Update, context: ContextTypes
         update_allergen_intro(user.id, allergen, severity="unknown", outcome="unknown")
         allergen_cap = allergen.capitalize()
         msg = f"✅ {allergen_cap} quick-logged!"
-        if language == "es":
+        if language == "zh":
             msg = f"✅ {allergen_cap} registrado rápidamente."
         await query.answer(msg, show_alert=True)
         # Refresh journal
@@ -4417,7 +4385,7 @@ async def handle_slot_action_callback(update: Update, context: ContextTypes.DEFA
             del days[day_key][slot_key]
         upsert_weekly_plan(user.id, week_start=week_start, plan_json=json.dumps(plan_obj, ensure_ascii=False))
         msg = f"🗑️ Cleared {day_label} {slot_label}."
-        if language == "es":
+        if language == "zh":
             msg = f"🗑️ Eliminado {day_label} {slot_label}."
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("\u2190 Back to week", callback_data="fullweek")],
@@ -4512,7 +4480,7 @@ def main() -> None:
 
     # Inline keyboard callback handlers (must be added before generic text handler)
     application.add_handler(CallbackQueryHandler(handle_apply_callback, pattern=r"^(opt|selday|apply|back):"))
-    application.add_handler(CallbackQueryHandler(handle_plan_callback, pattern=r"^(day_|fullweek|saveplan)$"))
+    application.add_handler(CallbackQueryHandler(handle_plan_callback, pattern=r"^(day_[a-z]+|fullweek|saveplan)$"))
     application.add_handler(CallbackQueryHandler(handle_regen_callback, pattern=r"^regen_"))
     application.add_handler(CallbackQueryHandler(handle_rate_callback, pattern=r"^rate:"))
     application.add_handler(CallbackQueryHandler(handle_edit_callback, pattern=r"^edit:"))

@@ -136,14 +136,14 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(keyboard.inline_keyboard[0][0].callback_data, "opt:1")
         self.assertEqual(keyboard.inline_keyboard[1][0].callback_data, "opt:2")
 
-    def test_render_inspiration_message_spanish(self):
+    def test_render_inspiration_message_chinese(self):
         text, keyboard = bot.render_inspiration_message(
             "- Pasta bake inspiration",
             ["Creamy Veggie Pasta", "Chicken Rice Bowl"],
-            language="es",
+            language="zh",
         )
-        self.assertIn("Opción 1", text)
-        self.assertIn("Esto es lo que encontré", text)
+        self.assertIn("选项 1", text)
+        self.assertIn("这是我找到的内容", text)
 
     def test_render_meal_card_formatting(self):
         meal = {

@@ -37,7 +37,7 @@ class TestShoppingListRenderer:
         assert "🛒" in result
         assert "carrots" in result
 
-    def test_spanish_header(self):
-        raw = '{"produce": ["zanahoria"], "protein": [], "dairy": [], "pantry": [], "other": []}'
-        result = _render_shopping_list_from_json(raw, "es")
-        assert "🛒 Lista de Compras" in result
+    def test_chinese_header(self):
+        raw = '{"produce": ["胡萝卜"], "protein": [], "dairy": [], "pantry": [], "other": []}'
+        result = _render_shopping_list_from_json(raw, "zh")
+        assert "🛒 购物清单" in result
