@@ -1078,6 +1078,7 @@ def build_weekly_plan_keyboard(language: str = "en") -> InlineKeyboardMarkup:
     fullweek_labels = {"en": "📋 Full week", "zh": "📋 完整周"}
     nutrition_labels = {"en": "📊 Nutrition", "zh": "📊 营养"}
     save_labels = {"en": "💾 Save plan", "zh": "💾 保存计划"}
+    feedback_labels = {"en": "💬 Feedback", "zh": "💬 反馈"}
 
     rows: List[List[InlineKeyboardButton]] = [
         first_four,
@@ -1087,8 +1088,8 @@ def build_weekly_plan_keyboard(language: str = "en") -> InlineKeyboardMarkup:
                                callback_data="nutrition"),
          InlineKeyboardButton("🌐 EN", callback_data="lang:en"),
          InlineKeyboardButton("ZH", callback_data="lang:zh")],
-        [InlineKeyboardButton(save_labels.get(language, save_labels["en"]),
-                              callback_data="saveplan")],
+        [InlineKeyboardButton(save_labels.get(language, save_labels["en"]), callback_data="saveplan"),
+         InlineKeyboardButton(feedback_labels.get(language, feedback_labels["en"]), callback_data="feedback")],
     ]
     return InlineKeyboardMarkup(rows)
 
@@ -1445,6 +1446,24 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute("""
+    CREATE TABLE IF NOT EXISTS user_feedback (
+        feedback_id TEXT PRIMARY KEY,
+        telegram_user_id INTEGER NOT NULL,
+        feedback_type TEXT NOT NULL,
+        text TEXT NOT NULL,
+        context TEXT,
+        quick_rating INTEGER,
+        source TEXT DEFAULT 'command',
+        status TEXT DEFAULT 'new',
+        priority TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        reviewed_at TIMESTAMP,
+        reviewed_by TEXT
+    )
+""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_status ON user_feedback(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_user ON user_feedback(telegram_user_id)")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS allergen_intros (
@@ -1761,6 +1780,71 @@ def get_negatively_rated_meal_ids(telegram_user_id: int) -> set[str]:
         if total >= 2 and meal_neg_count.get(meal_id, 0) / total > 0.5:
             result.add(meal_id)
     return result
+
+
+def save_feedback(
+    telegram_user_id: int,
+    feedback_type: str,
+    text: str,
+    context: Optional[str] = None,
+    quick_rating: Optional[int] = None,
+    source: str = "command",
+) -> str:
+    """Save user feedback to the database."""
+    import uuid
+    feedback_id = str(uuid.uuid4())[:8]
+    priority_map = {
+        "safety": "P0", "bug": "P1", "ux": "P2",
+        "feature": "P3", "content": "P2", "other": "P3",
+    }
+    priority = priority_map.get(feedback_type, "P3")
+    with _db_conn() as conn:
+        conn.execute(
+            """INSERT INTO user_feedback
+               (feedback_id, telegram_user_id, feedback_type, text, context, quick_rating, source, priority)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (feedback_id, telegram_user_id, feedback_type, text, context, quick_rating, source, priority),
+        )
+    return feedback_id
+
+
+def get_feedback_for_review(status: str = "new", limit: int = 20) -> list:
+    """Get feedback entries by status for PM review."""
+    with _db_conn() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT * FROM user_feedback
+               WHERE status = ?
+               ORDER BY
+                  CASE priority
+                      WHEN 'P0' THEN 1 WHEN 'P1' THEN 2 WHEN 'P2' THEN 3 ELSE 4
+                  END,
+                  created_at DESC
+               LIMIT ?""",
+            (status, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def mark_feedback_reviewed(feedback_id: str, status: str, reviewer: str = "pm_agent") -> None:
+    """Update feedback status after PM review."""
+    with _db_conn() as conn:
+        conn.execute(
+            """UPDATE user_feedback
+               SET status = ?, reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?
+               WHERE feedback_id = ?""",
+            (status, reviewer, feedback_id),
+        )
+
+
+def count_feedback_by_status() -> dict:
+    """Count feedback grouped by status."""
+    with _db_conn() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT status, COUNT(*) as count FROM user_feedback GROUP BY status"
+        ).fetchall()
+    return {row["status"]: row["count"] for row in rows}
 
 
 def next_monday(d: date) -> date:
@@ -2603,6 +2687,20 @@ async def handle_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     await query.answer("Error refreshing week view", show_alert=True)
             return
 
+        if data.startswith("fbtype:"):
+            await query.answer()
+            ftype = data.split(":", 1)[1]
+            context.user_data["pending_feedback_type"] = ftype
+            language = get_user_language(user.id, user.language_code or "en")
+            prompts = {
+                "en": "💬 Please describe your feedback in detail:",
+                "zh": "💬 请详细描述您的反馈：",
+            }
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data="cancel")]])
+            await query.edit_message_text(prompts.get(language, prompts["en"]), reply_markup=keyboard)
+            context.user_data["awaiting_feedback_text"] = True
+            return
+
         if data == "saveplan":
             msg = "\U0001f4be Plan saved!" if language == "en" else "\U0001f4be \u00a1Plan guardado!"
             keyboard = InlineKeyboardMarkup([
@@ -2984,6 +3082,39 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             update,
             f"{render_single_meal(day_key, slot_key, normalized_meal, language)}\n\n{render_weekly_plan(plan_obj, language, profile=profile)}",
             reply_markup=main_menu_markup(language, user.id),
+        )
+        return
+    if context.user_data.get("awaiting_feedback_text"):
+        context.user_data.pop("awaiting_feedback_text", None)
+        pending_type = context.user_data.pop("pending_feedback_type", None)
+        if pending_type is None:
+            return
+        text = update.message.text.strip()
+        if text.lower() in ("cancel", "c"):
+            language = get_user_language(user.id, user.language_code or "en")
+            await update.message.reply_text(
+                {"en": "Feedback cancelled. Thanks anyway! 🙏", "zh": "反馈已取消。感谢您！🙏"}.get(language, "Feedback cancelled.")
+            )
+            return
+        if len(text) < 5:
+            language = get_user_language(user.id, user.language_code or "en")
+            await update.message.reply_text(
+                {"en": "Please add more detail so we can act on it.", "zh": "请提供更多细节以便我们处理。"}.get(language, "Please add more detail.")
+            )
+            return
+        feedback_id = save_feedback(
+            telegram_user_id=user.id,
+            feedback_type=pending_type,
+            text=text,
+            context="user_initiated",
+            source="command",
+        )
+        language = get_user_language(user.id, user.language_code or "en")
+        await update.message.reply_text(
+            {
+                "en": f"✅ Feedback received (ID: {feedback_id}). Thank you! 🙏",
+                "zh": f"✅ 已收到反馈（ID: {feedback_id}）。感谢您！🙏",
+            }.get(language, f"✅ Feedback received (ID: {feedback_id}).")
         )
         return
     await update.message.chat.send_action("typing")
@@ -3835,6 +3966,38 @@ def normalize_slot(slot: str) -> Optional[str]:
     return mapping.get(slot)
 
 
+async def feedback_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """ /feedback — submit detailed feedback via inline type picker. """
+    if not update.message:
+        return
+    user = update.effective_user
+    if not user:
+        return
+    upsert_user(user.id, user.language_code)
+    language = get_user_language(user.id, user.language_code or "en")
+
+    FEEDBACK_TYPES = [
+        ("🐛 Bug", "bug"),
+        ("✨ Feature", "feature"),
+        ("📱 UX", "ux"),
+        ("📝 Content", "content"),
+        ("⚠️ Safety", "safety"),
+        ("💬 Other", "other"),
+    ]
+
+    header = {
+        "en": "💬 We value your feedback!\n\nWhat type of feedback do you have?",
+        "zh": "💬 我们重视您的反馈！\n\n您有什么类型的反馈？",
+    }.get(language, "💬 We value your feedback!\n\nWhat type of feedback do you have?")
+
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton(label, callback_data=f"fbtype:{ft}")] for label, ft in FEEDBACK_TYPES]
+        + [[InlineKeyboardButton("❌ Cancel", callback_data="cancel")]]
+    )
+    await update.message.reply_text(header, reply_markup=keyboard)
+    context.user_data["awaiting_feedback_type"] = True
+
+
 async def apply_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message:
         return
@@ -4511,6 +4674,7 @@ def main() -> None:
     application.add_handler(CommandHandler("history", history_command))
     application.add_handler(CommandHandler("apply", apply_command))
     application.add_handler(CommandHandler("rate", rate_command))
+    application.add_handler(CommandHandler("feedback", feedback_command))
     application.add_handler(CommandHandler("regenerate", regenerate_command))
     application.add_handler(CommandHandler("introduce", introduce_command))
     application.add_handler(CommandHandler("profile", profile_command))
