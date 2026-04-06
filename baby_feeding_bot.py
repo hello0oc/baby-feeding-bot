@@ -1138,7 +1138,7 @@ def render_weekly_plan_digest(
         for slot_key in SLOT_LABELS:
             meal = day.get(slot_key)
             if isinstance(meal, dict):
-                name = meal.get("name", "")
+                name = meal.get("title", "")
                 if name:
                     # Truncate long names
                     planned.append(name[:28])
